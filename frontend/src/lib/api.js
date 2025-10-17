@@ -1,0 +1,124 @@
+// API helper for building URLs and handling SSE lifecycles
+export class ApiClient {
+  constructor(baseUrl = '') {
+    this.baseUrl = baseUrl;
+    this.eventSources = new Map();
+  }
+
+  // Build URL with query parameters
+  buildUrl(endpoint, params = {}) {
+    const url = new URL(endpoint, window.location.origin + this.baseUrl);
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        url.searchParams.append(key, value);
+      }
+    });
+    return url.toString();
+  }
+
+  // Send audio blob to ingest endpoint
+  async sendAudioBlob(blob, sessionId, language, vadLevel) {
+    const url = this.buildUrl('/ingest', {
+      session: sessionId,
+      lang: language,
+      vad: vadLevel
+    });
+
+    const response = await fetch(url, {
+      method: 'POST',
+      body: blob,
+      headers: {
+        'Content-Type': 'audio/webm;codecs=opus'
+      }
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        throw new Error('At capacity (5 users)');
+      }
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return response;
+  }
+
+  // Create SSE connection with auto-reconnect
+  createEventSource(endpoint, params = {}, onMessage, onError) {
+    const url = this.buildUrl(endpoint, params);
+    const eventSource = new EventSource(url);
+    
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        onMessage(data);
+      } catch (e) {
+        console.error('Failed to parse SSE message:', e);
+        onMessage({ error: 'Invalid message format' });
+      }
+    };
+
+    eventSource.onerror = (error) => {
+      console.error('SSE Error:', error);
+      if (onError) onError(error);
+      
+      // Auto-reconnect after 3 seconds if connection is lost
+      if (eventSource.readyState === EventSource.CLOSED) {
+        setTimeout(() => {
+          if (this.eventSources.has(endpoint)) {
+            console.log('Attempting to reconnect SSE...');
+            this.createEventSource(endpoint, params, onMessage, onError);
+          }
+        }, 3000);
+      }
+    };
+
+    // Store reference for cleanup
+    this.eventSources.set(endpoint, eventSource);
+    return eventSource;
+  }
+
+  // Start captions stream
+  startCaptionsStream(sessionId, onMessage, onError) {
+    return this.createEventSource('/captions', { session: sessionId }, onMessage, onError);
+  }
+
+  // Start notes stream
+  startNotesStream(sessionId, mode, onMessage, onError) {
+    return this.createEventSource('/notes', { session: sessionId, mode }, onMessage, onError);
+  }
+
+  // Close all event sources
+  closeAllStreams() {
+    this.eventSources.forEach((eventSource, endpoint) => {
+      eventSource.close();
+    });
+    this.eventSources.clear();
+  }
+
+  // Close specific stream
+  closeStream(endpoint) {
+    const eventSource = this.eventSources.get(endpoint);
+    if (eventSource) {
+      eventSource.close();
+      this.eventSources.delete(endpoint);
+    }
+  }
+}
+
+// Language mapping for class names
+export const LANGUAGE_MAP = {
+  'Biology': 'en',
+  'Mandarin': 'zh',
+  'Spanish': 'es',
+  'English': 'en',
+  'Global History': 'en'
+};
+
+// Generate UUID for session
+export function generateSessionId() {
+  return 'xxxx-xxxx-4xxx-yxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}

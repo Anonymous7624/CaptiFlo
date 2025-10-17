@@ -55,15 +55,22 @@ export class ApiClient {
       console.error('SSE Error:', error);
       if (onError) onError(error);
       
-      // Auto-reconnect after 3 seconds if connection is lost
+      // Auto-reconnect with backoff (2s -> 5s)
       if (eventSource.readyState === EventSource.CLOSED) {
+        const retryDelay = this.retryCount < 3 ? 2000 : 5000;
+        this.retryCount = (this.retryCount || 0) + 1;
+        
         setTimeout(() => {
           if (this.eventSources.has(endpoint)) {
-            console.log('Attempting to reconnect SSE...');
+            console.log(`Attempting to reconnect SSE (attempt ${this.retryCount})...`);
             this.createEventSource(endpoint, params, onMessage, onError);
           }
-        }, 3000);
+        }, retryDelay);
       }
+    };
+
+    eventSource.onopen = () => {
+      this.retryCount = 0; // Reset retry count on successful connection
     };
 
     // Store reference for cleanup
@@ -123,9 +130,5 @@ export const LANGUAGE_MAP = {
 
 // Generate UUID for session
 export function generateSessionId() {
-  return 'xxxx-xxxx-4xxx-yxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
+  return crypto.randomUUID();
 }

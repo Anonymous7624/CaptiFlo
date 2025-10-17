@@ -2,55 +2,34 @@ import React from 'react';
 
 const CaptionsPanel = ({ captions, isRecording }) => {
   const currentCaption = captions.length > 0 ? captions[captions.length - 1] : '';
-  const history = captions.slice(0, -1);
+  const recentCaptions = captions.slice(-8, -1); // Show last 7 captions before current
 
   return (
-    <div style={{
-      backgroundColor: '#1a1f2e',
-      borderRadius: '12px',
-      padding: '24px',
-      minHeight: '200px',
+    <div className="panel" style={{
+      padding: '3rem 2rem',
+      minHeight: '400px',
       display: 'flex',
       flexDirection: 'column',
       justifyContent: 'center',
-      border: '1px solid #2d3748',
-      position: 'relative'
+      alignItems: 'center',
+      textAlign: 'center',
+      marginTop: '2rem'
     }}>
-      {/* Recording indicator */}
-      {isRecording && (
+      {/* Recent captions (faded, smaller) */}
+      {recentCaptions.length > 0 && (
         <div style={{
-          position: 'absolute',
-          top: '16px',
-          right: '16px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          color: '#ef4444',
-          fontSize: '14px',
-          fontWeight: '500'
+          marginBottom: '2rem',
+          maxWidth: '800px'
         }}>
-          <div style={{
-            width: '8px',
-            height: '8px',
-            borderRadius: '50%',
-            backgroundColor: '#ef4444',
-            animation: 'pulse 1.5s infinite'
-          }}></div>
-          Recording
-        </div>
-      )}
-
-      {/* Caption history (faded) */}
-      {history.length > 0 && (
-        <div style={{
-          marginBottom: '16px',
-          opacity: 0.4,
-          fontSize: '16px',
-          lineHeight: '1.4',
-          color: '#a0aec0'
-        }}>
-          {history.slice(-3).map((caption, index) => (
-            <div key={index} style={{ marginBottom: '8px' }}>
+          {recentCaptions.map((caption, index) => (
+            <div 
+              key={index} 
+              className="caption-recent"
+              style={{
+                marginBottom: '0.5rem',
+                opacity: 0.4 + (index * 0.1) // Gradually increase opacity
+              }}
+            >
               {caption}
             </div>
           ))}
@@ -58,21 +37,42 @@ const CaptionsPanel = ({ captions, isRecording }) => {
       )}
 
       {/* Current caption (large and prominent) */}
-      <div style={{
-        fontSize: '28px',
-        lineHeight: '1.3',
-        color: '#ffffff',
-        textAlign: 'center',
-        fontWeight: '400',
-        minHeight: '40px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center'
-      }}>
-        {currentCaption || (isRecording ? 'Listening...' : 'Press Start to begin')}
+      <div 
+        className="caption-big"
+        style={{
+          maxWidth: '900px',
+          minHeight: '80px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: currentCaption ? 'var(--text)' : 'var(--muted)'
+        }}
+      >
+        {currentCaption || (isRecording ? 'Listening...' : 'Press Start to begin recording')}
       </div>
 
-      {/* Pulse animation for recording indicator */}
+      {/* Recording indicator */}
+      {isRecording && (
+        <div style={{
+          marginTop: '2rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          color: 'var(--accent)',
+          fontSize: '0.875rem',
+          fontWeight: '500'
+        }}>
+          <div style={{
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            backgroundColor: 'var(--accent)',
+            animation: 'pulse 1.5s infinite'
+          }}></div>
+          Recording in progress
+        </div>
+      )}
+
       <style jsx>{`
         @keyframes pulse {
           0%, 100% { opacity: 1; }

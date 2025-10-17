@@ -1,0 +1,10 @@
+﻿fastapi
+uvicorn[standard]
+pydantic>=2,<3
+starlette
+websockets
+httpx
+numpy
+faster-whisper
+soundfile
+sse-starlette

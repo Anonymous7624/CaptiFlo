@@ -12,17 +12,42 @@ from settings import settings
 # Initialize Whisper model once at module load
 model = WhisperModel(settings.WHISPER_MODEL, compute_type=settings.COMPUTE_TYPE)
 
+class FFmpegMissing(Exception):
+    """Custom exception for missing FFmpeg."""
+    pass
+
 def find_ffmpeg() -> str:
     """
     Find FFmpeg binary and verify it exists.
-    Returns the path to FFmpeg or raises an exception if not found.
+    First checks PATH, then tries common Windows paths.
+    Returns the path to FFmpeg or raises FFmpegMissing if not found.
     """
+    # Try the configured binary first
     ffmpeg_path = shutil.which(settings.FFMPEG_BIN)
-    if not ffmpeg_path:
-        error_msg = f"FFmpeg not found in PATH. Please install FFmpeg or set FFMPEG_BIN environment variable. Current FFMPEG_BIN: {settings.FFMPEG_BIN}"
-        logging.error(error_msg)
-        raise FileNotFoundError(error_msg)
-    return ffmpeg_path
+    if ffmpeg_path:
+        return ffmpeg_path
+    
+    # Try common Windows paths if on Windows
+    import os
+    import platform
+    if platform.system() == "Windows":
+        common_paths = [
+            "C:/Program Files/ffmpeg/bin/ffmpeg.exe",
+            "C:/ffmpeg/bin/ffmpeg.exe",
+        ]
+        
+        # Try scoop path with current user
+        username = os.environ.get("USERNAME", "")
+        if username:
+            common_paths.append(f"C:/Users/{username}/scoop/apps/ffmpeg/current/bin/ffmpeg.exe")
+        
+        for path in common_paths:
+            if os.path.isfile(path):
+                return path
+    
+    # Not found anywhere
+    error_msg = f"FFmpeg not found in PATH. Please install FFmpeg or set FFMPEG_BIN environment variable. Current FFMPEG_BIN: {settings.FFMPEG_BIN}"
+    raise FFmpegMissing(error_msg)
 
 # Language mapping as specified
 LANGUAGE_MAP = {
@@ -49,7 +74,7 @@ def webm_to_pcm16(buffer: bytes) -> bytes:
     # Verify FFmpeg is available
     try:
         ffmpeg_path = find_ffmpeg()
-    except FileNotFoundError as e:
+    except FFmpegMissing as e:
         raise FileNotFoundError("ffmpeg_missing") from e
     
     fin = None

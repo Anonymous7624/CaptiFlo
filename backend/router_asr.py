@@ -54,7 +54,7 @@ async def ingest(request: Request, session: str, lang: str = "auto", vad: int = 
     if not audio_buffer:
         return JSONResponse(
             status_code=400,
-            content={"error": "no_data", "detail": "No audio data provided"}
+            content={"error": "no_audio"}
         )
     
     try:

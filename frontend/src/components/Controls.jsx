@@ -1,4 +1,5 @@
 import React from 'react';
+import ClassSelector from './ClassSelector';
 
 function Controls({
   selectedClass,
@@ -24,30 +25,12 @@ function Controls({
       }}>
         {/* Class selector */}
         <div>
-          <label style={{
-            display: 'block',
-            fontSize: '0.875rem',
-            fontWeight: '500',
-            color: 'var(--text)',
-            marginBottom: '0.5rem'
-          }}>
-            Class
-          </label>
-          <select
-            value={selectedClass}
-            onChange={(e) => setSelectedClass(e.target.value)}
+          <ClassSelector
+            selectedClass={selectedClass}
+            onClassChange={setSelectedClass}
+            classOptions={classOptions}
             disabled={isRecording}
-            className="select"
-            style={{
-              width: '100%',
-              opacity: isRecording ? 0.6 : 1,
-              cursor: isRecording ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {classOptions.map(option => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
+          />
         </div>
 
         {/* Mic sensitivity */}

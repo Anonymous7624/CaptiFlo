@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Toast from '../components/Toast';
+import ClassSelector from '../components/ClassSelector';
 import { ApiClient } from '../lib/api';
 
 function Notes() {
@@ -192,17 +193,14 @@ function Notes() {
           </span>
         </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <select
-            value={selectedClass}
-            onChange={(e) => handleClassChange(e.target.value)}
-            className="select"
-            style={{ minWidth: '150px' }}
-          >
-            {classOptions.map(option => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+          <div style={{ minWidth: '300px' }}>
+            <ClassSelector
+              selectedClass={selectedClass}
+              onClassChange={handleClassChange}
+              classOptions={classOptions}
+            />
+          </div>
           
           <button
             onClick={copyAllNotes}

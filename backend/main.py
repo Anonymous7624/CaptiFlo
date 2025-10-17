@@ -1,7 +1,8 @@
 ﻿from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from router_asr import router as asr_router
+from router_notes import router as notes_router  # ok if you added notes; remove if not yet
 
 app = FastAPI(title="CaptionsNotes")
 
@@ -10,17 +11,12 @@ app.add_middleware(
     allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
 
+# APIs
 app.include_router(asr_router)
+app.include_router(notes_router)
 
-@app.get("/", response_class=HTMLResponse)
-def index():
-    return """<!doctype html>
-<html><head><meta charset="utf-8"><title>CaptionsNotes</title></head>
-<body style="font-family:system-ui;padding:24px;">
-<h1>Captions & Notes API</h1>
-<p>Server is running.</p>
-<p>Health check: <a href="/health">/health</a></p>
-</body></html>"""
+# Serve built frontend from ./public (index.html at /)
+app.mount("/", StaticFiles(directory="public", html=True), name="frontend")
 
 @app.get("/health")
 def health():

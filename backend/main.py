@@ -10,6 +10,8 @@ from router_asr import router as asr_router
 from router_notes import router as notes_router
 from notes import notes_generator
 from settings import settings
+from asr import find_ffmpeg
+import logging
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -20,6 +22,15 @@ async def lifespan(app: FastAPI):
     print(f"Session TTL: {settings.SESSION_MINUTES} minutes")
     print(f"Whisper model: {settings.WHISPER_MODEL} ({settings.COMPUTE_TYPE})")
     print(f"CORS origins: {settings.cors_origins}")
+    
+    # Check FFmpeg availability
+    try:
+        ffmpeg_path = find_ffmpeg()
+        print(f"FFmpeg found at: {ffmpeg_path}")
+    except FileNotFoundError as e:
+        logging.error(f"FFmpeg health check failed: {e}")
+        print(f"WARNING: {e}")
+        print("Audio ingestion will fail until FFmpeg is installed or FFMPEG_BIN is configured correctly.")
     
     yield
     

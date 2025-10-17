@@ -32,13 +32,7 @@ export class ApiClient {
       }
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        throw new Error('At capacity (5 users)');
-      }
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
+    // Return response without throwing - let caller handle errors
     return response;
   }
 
@@ -101,6 +95,19 @@ export class ApiClient {
     if (eventSource) {
       eventSource.close();
       this.eventSources.delete(endpoint);
+    }
+  }
+
+  // End session explicitly
+  async endSession(sessionId) {
+    try {
+      const url = this.buildUrl('/end', { session: sessionId });
+      const response = await fetch(url, { method: 'POST' });
+      // Don't throw on error - session might already be expired
+      return response.ok;
+    } catch (error) {
+      console.warn('Failed to end session:', error);
+      return false;
     }
   }
 }

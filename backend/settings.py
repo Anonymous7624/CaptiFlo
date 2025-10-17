@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     # Dev mode detection
     DEV_MODE: bool = os.getenv("DEV_MODE", "false").lower() == "true"
     
+    # FFmpeg settings
+    FFMPEG_BIN: str = "ffmpeg"
+    
+    # Session management
+    INACTIVE_SECS: int = 90
+    KEEPALIVE_SECS: int = 10
+    
     @property
     def cors_origins(self) -> List[str]:
         if self.DEV_MODE:

@@ -1,10 +1,22 @@
-﻿from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from router_asr import router as asr_router
 from router_notes import router as notes_router  # keep if you’ve added notes
 
 app = FastAPI(title="CaptionsNotes", docs_url=None, redoc_url=None)
+
+# Check FFmpeg availability on startup
+@app.on_event("startup")
+async def startup_event():
+    import logging
+    try:
+        from asr import find_ffmpeg
+        find_ffmpeg()
+        logging.info("FFmpeg found and ready")
+    except Exception as e:
+        logging.error(f"FFmpeg not found on startup: {e}")
+        logging.error("Audio ingestion will fail until FFmpeg is installed or FFMPEG_BIN is set correctly")
 
 # CORS — tighten to your domains when you’re done testing
 app.add_middleware(

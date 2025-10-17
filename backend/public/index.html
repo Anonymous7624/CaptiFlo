@@ -1,118 +1,46 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Lecture Captions & Notes</title>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Live Captions & Notes</title>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .status {
-            padding: 15px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            text-align: center;
-            font-weight: 500;
-        }
-        .status.ready {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        .api-info {
-            background-color: #f8f9fa;
-            padding: 20px;
-            border-radius: 5px;
-            border-left: 4px solid #007bff;
-        }
-        .api-info h3 {
-            margin-top: 0;
-            color: #007bff;
-        }
-        .endpoint {
-            margin: 10px 0;
-            padding: 8px 12px;
-            background: white;
-            border-radius: 3px;
-            border: 1px solid #dee2e6;
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-        }
-        .method {
-            font-weight: bold;
-            color: #28a745;
-        }
-        .method.post {
-            color: #ffc107;
-        }
-        .footer {
-            text-align: center;
-            margin-top: 30px;
-            color: #6c757d;
-            font-size: 14px;
-        }
+      /* Reset and base styles */
+      * {
+        box-sizing: border-box;
+      }
+      
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        background-color: #0b0f1a;
+        color: #ffffff;
+      }
+      
+      /* Custom scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+      
+      ::-webkit-scrollbar-track {
+        background: #1a1f2e;
+      }
+      
+      ::-webkit-scrollbar-thumb {
+        background: #4b5563;
+        border-radius: 4px;
+      }
+      
+      ::-webkit-scrollbar-thumb:hover {
+        background: #6b7280;
+      }
     </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🎤 Live Lecture Captions & Notes</h1>
-        
-        <div class="status ready">
-            ✅ Backend is running and ready for connections
-        </div>
-        
-        <div class="api-info">
-            <h3>API Endpoints</h3>
-            
-            <div class="endpoint">
-                <span class="method">GET</span> /health
-                <br><small>Health check - returns {"ok": true}</small>
-            </div>
-            
-            <div class="endpoint">
-                <span class="method post">POST</span> /ingest?session=UUID&lang=auto|en|es|zh&vad=0..3
-                <br><small>Submit audio chunks (audio/webm) for transcription</small>
-            </div>
-            
-            <div class="endpoint">
-                <span class="method">GET</span> /captions?session=UUID
-                <br><small>SSE stream of live captions</small>
-            </div>
-            
-            <div class="endpoint">
-                <span class="method">GET</span> /notes?session=UUID&mode=Biology|Mandarin|Spanish|English|GlobalHistory
-                <br><small>SSE stream of live notes (every ~5s)</small>
-            </div>
-        </div>
-        
-        <div class="api-info">
-            <h3>Supported Languages & Classes</h3>
-            <p><strong>Languages:</strong> English (en), Spanish (es), Mandarin Chinese (zh), Auto-detect (auto)</p>
-            <p><strong>Class Modes:</strong> Biology, Mandarin, Spanish, English, Global History</p>
-            <p><strong>VAD Sensitivity:</strong> 0 (most sensitive) to 3 (least sensitive)</p>
-        </div>
-        
-        <div class="footer">
-            <p>Ready for up to 5 concurrent sessions • 40-minute session TTL</p>
-            <p>No audio storage • Privacy-focused • Assistive technology</p>
-        </div>
-    </div>
-</body>
+    <script type="module" crossorigin src="/assets/index-CE06LKlA.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DJyK68V1.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>

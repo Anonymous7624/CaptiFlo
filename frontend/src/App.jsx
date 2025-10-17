@@ -112,12 +112,29 @@ function App() {
       mediaRecorder.ondataavailable = async (event) => {
         if (event.data.size > 0) {
           try {
-            await apiClientRef.current.sendAudioBlob(
+            const response = await apiClientRef.current.sendAudioBlob(
               event.data,
               newSessionId,
               LANGUAGE_MAP[selectedClass],
               micSensitivity
             );
+            
+            // Check for specific error responses
+            if (!response.ok) {
+              const errorData = await response.json().catch(() => ({}));
+              if (errorData.error === 'ffmpeg_missing') {
+                showToast('Server needs FFmpeg installed. Please contact administrator.', 'error');
+                stopRecording();
+              } else if (errorData.error === 'capacity') {
+                showToast(errorData.detail || 'At capacity (5 sessions)', 'error');
+                stopRecording();
+              } else if (errorData.error === 'decode_failed') {
+                showToast('Audio format not supported', 'error');
+              } else {
+                showToast('Unable to send audio data', 'error');
+              }
+              return;
+            }
           } catch (error) {
             console.error('Failed to send audio:', error);
             if (error.message.includes('At capacity')) {
@@ -179,7 +196,7 @@ function App() {
   };
 
   // Stop recording
-  const stopRecording = () => {
+  const stopRecording = async () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
@@ -191,6 +208,11 @@ function App() {
 
     // Close all SSE streams
     apiClientRef.current.closeAllStreams();
+
+    // End session to free up capacity immediately
+    if (sessionId) {
+      await apiClientRef.current.endSession(sessionId);
+    }
 
     setIsRecording(false);
     setSessionId(null);

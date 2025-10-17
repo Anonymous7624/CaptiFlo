@@ -4,11 +4,25 @@ Audio processing, VAD, and Whisper transcription.
 import tempfile
 import subprocess
 import numpy as np
+import shutil
+import logging
 from faster_whisper import WhisperModel
 from settings import settings
 
 # Initialize Whisper model once at module load
 model = WhisperModel(settings.WHISPER_MODEL, compute_type=settings.COMPUTE_TYPE)
+
+def find_ffmpeg() -> str:
+    """
+    Find FFmpeg binary and verify it exists.
+    Returns the path to FFmpeg or raises an exception if not found.
+    """
+    ffmpeg_path = shutil.which(settings.FFMPEG_BIN)
+    if not ffmpeg_path:
+        error_msg = f"FFmpeg not found in PATH. Please install FFmpeg or set FFMPEG_BIN environment variable. Current FFMPEG_BIN: {settings.FFMPEG_BIN}"
+        logging.error(error_msg)
+        raise FileNotFoundError(error_msg)
+    return ffmpeg_path
 
 # Language mapping as specified
 LANGUAGE_MAP = {
@@ -27,18 +41,30 @@ def webm_to_pcm16(buffer: bytes) -> bytes:
     """
     Decode audio/webm to 16kHz mono s16le PCM using ffmpeg.
     Uses temporary files that are automatically cleaned up.
+    Raises specific exceptions for different failure modes.
     """
     if not buffer:
         return b""
     
-    with tempfile.NamedTemporaryFile(suffix=".webm", delete=True) as fin, \
-         tempfile.NamedTemporaryFile(suffix=".s16", delete=True) as fout:
+    # Verify FFmpeg is available
+    try:
+        ffmpeg_path = find_ffmpeg()
+    except FileNotFoundError as e:
+        raise FileNotFoundError("ffmpeg_missing") from e
+    
+    fin = None
+    fout = None
+    try:
+        fin = tempfile.NamedTemporaryFile(suffix=".webm", delete=False)
+        fout = tempfile.NamedTemporaryFile(suffix=".s16", delete=False)
         
+        # Write input data and close handle (Windows requirement)
         fin.write(buffer)
-        fin.flush()
+        fin.close()
+        fout.close()
         
         cmd = [
-            "ffmpeg", "-hide_banner", "-loglevel", "error",
+            ffmpeg_path, "-hide_banner", "-loglevel", "error",
             "-i", fin.name,
             "-ar", "16000",  # 16kHz sample rate
             "-ac", "1",      # mono
@@ -47,11 +73,23 @@ def webm_to_pcm16(buffer: bytes) -> bytes:
         ]
         
         try:
-            subprocess.run(cmd, check=True, capture_output=True)
-            return fout.read()
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+            # Read the output file
+            with open(fout.name, 'rb') as f:
+                return f.read()
+        except FileNotFoundError as e:
+            raise FileNotFoundError("ffmpeg_missing") from e
         except subprocess.CalledProcessError as e:
-            print(f"FFmpeg decode error: {e}")
-            return b""
+            error_detail = f"FFmpeg decode failed: {e.stderr[:200] if e.stderr else str(e)}"
+            raise subprocess.CalledProcessError(e.returncode, e.cmd, error_detail) from e
+            
+    finally:
+        # Clean up temp files
+        import os
+        if fin and os.path.exists(fin.name):
+            os.unlink(fin.name)
+        if fout and os.path.exists(fout.name):
+            os.unlink(fout.name)
 
 def apply_vad(pcm16: bytes, sensitivity: int) -> bytes:
     """

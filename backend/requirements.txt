@@ -1,10 +1,10 @@
-﻿fastapi
+fastapi
 uvicorn[standard]
 pydantic>=2,<3
+pydantic-settings
 starlette
-websockets
+sse-starlette
 httpx
 numpy
 faster-whisper
 soundfile
-sse-starlette

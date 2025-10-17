@@ -1,13 +1,40 @@
-﻿from pydantic import BaseModel
+from pydantic_settings import BaseSettings
+from typing import List
+import os
 
-class Settings(BaseModel):
+class Settings(BaseSettings):
     APP_NAME: str = "CaptionsNotes"
-    MAX_CONCURRENT_SESSIONS: int = 5   # cap at 5 users
-    SESSION_MINUTES: int = 40          # auto-expire sessions
-    CORS_ALLOW_ORIGINS: list[str] = ["*"]
-    NOTES_ENABLED: bool = True         # real-time notes engine toggle
-    WHISPER_MODEL: str = "base"        # "tiny" (faster) or "base" (better)
-    COMPUTE_TYPE: str = "int8"         # faster-whisper compute type
-    LOG_LEVEL: str = "warning"         # uvicorn log level
+    MAX_CONCURRENT_SESSIONS: int = 5
+    SESSION_MINUTES: int = 40
+    
+    # CORS settings - production vs dev
+    ALLOWED_ORIGINS: List[str] = [
+        "https://ldawg7624.com",
+        "https://www.ldawg7624.com",
+        "http://localhost:5173"  # for dev
+    ]
+    
+    # Whisper settings
+    WHISPER_MODEL: str = "base"
+    COMPUTE_TYPE: str = "int8"
+    
+    # Ollama settings
+    NOTES_MODEL: str = "phi3:mini"
+    OLLAMA_URL: str = "http://127.0.0.1:11434/api/generate"
+    
+    # Logging
+    LOG_LEVEL: str = "warning"
+    
+    # Dev mode detection
+    DEV_MODE: bool = os.getenv("DEV_MODE", "false").lower() == "true"
+    
+    @property
+    def cors_origins(self) -> List[str]:
+        if self.DEV_MODE:
+            return ["*"]
+        return self.ALLOWED_ORIGINS
+    
+    class Config:
+        env_file = ".env"
 
 settings = Settings()

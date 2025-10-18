@@ -34,7 +34,7 @@ async def notes_stream(session: str, mode: str = "default", grade: int = 9):
                 # Get session
                 session_state = session_manager.get_session(session)
                 if not session_state:
-                    yield "event: end\ndata: {\"error\": \"Session not found or expired\"}\n\n"
+                    # Close stream cleanly without sending error frame
                     break
                 
                 # Touch session to mark it as active
@@ -74,10 +74,9 @@ async def notes_stream(session: str, mode: str = "default", grade: int = 9):
             # Client disconnected
             pass
         except Exception as e:
-            try:
-                yield f"event: error\ndata: {{\"error\": \"Notes generation error: {str(e)}\"}}\n\n"
-            except:
-                pass  # Stream already closed
+            # Log error but don't send error frame to client
+            print(f"Notes generation error: {e}")
+            pass  # Stream already closed
     
     return EventSourceResponse(
         event_generator(),

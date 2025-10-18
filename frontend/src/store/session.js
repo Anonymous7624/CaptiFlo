@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import { ApiClient, LANGUAGE_MAP, generateSessionId } from '../lib/api';
+import { ApiClient, LANGUAGE_MAP, generateSessionId, reserveSession, getQueueStatus } from '../lib/api';
 import { WebmRecorder, RawPcmRecorder } from '../lib/audio';
 
 // Create the session store with unified state management
@@ -34,6 +34,10 @@ export const useSessionStore = create(
       notes: false,
       reconnecting: false
     },
+
+    // Queue status
+    queueStatus: null, // null | {status: "active"} | {status: "queued", position: N, size: Q}
+    queuePolling: false,
 
     // API client
     apiClient: new ApiClient(),
@@ -92,7 +96,7 @@ export const useSessionStore = create(
       return state.sessionId;
     },
 
-    // Start recording with improved speed and parallel processing
+    // Start recording with session reservation flow
     startRecording: async () => {
       const state = get();
       
@@ -100,6 +104,38 @@ export const useSessionStore = create(
         // Initialize session
         const sessionId = state.initializeSession();
         
+        // Reserve session first
+        const reservationResult = await reserveSession(sessionId);
+        
+        if (reservationResult.status === "queued") {
+          // Show queue UI and start polling
+          set({ 
+            queueStatus: reservationResult,
+            queuePolling: true 
+          });
+          state.startQueuePolling(sessionId);
+          return false; // Don't start recording yet
+        }
+        
+        if (reservationResult.status !== "active") {
+          throw new Error("Failed to reserve session");
+        }
+        
+        // Session is active, proceed with recording
+        return await state.startRecordingWithActiveSession(sessionId);
+        
+      } catch (error) {
+        console.error('Failed to start recording:', error);
+        state.stopRecording();
+        throw error;
+      }
+    },
+
+    // Start recording with active session (internal method)
+    startRecordingWithActiveSession: async (sessionId) => {
+      const state = get();
+      
+      try {
         // Get user media
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -143,15 +179,61 @@ export const useSessionStore = create(
         set({ 
           isRecording: true,
           captions: [],
+          queueStatus: { status: "active" },
           connectionStatus: { captions: false, notes: false, reconnecting: false }
         });
 
         return true;
       } catch (error) {
-        console.error('Failed to start recording:', error);
+        console.error('Failed to start recording with active session:', error);
         state.stopRecording();
         throw error;
       }
+    },
+
+    // Start queue polling
+    startQueuePolling: async (sessionId) => {
+      const state = get();
+      
+      const poll = async () => {
+        if (!state.queuePolling) return;
+        
+        try {
+          const status = await getQueueStatus(sessionId);
+          
+          if (status.status === "active") {
+            // Session became active, start recording
+            set({ queuePolling: false });
+            await state.startRecordingWithActiveSession(sessionId);
+          } else if (status.status === "queued") {
+            // Update queue position
+            set({ queueStatus: status });
+            // Poll again in 2 seconds
+            setTimeout(poll, 2000);
+          } else {
+            // Session not found, stop polling
+            set({ 
+              queuePolling: false,
+              queueStatus: null 
+            });
+          }
+        } catch (error) {
+          console.error('Queue polling error:', error);
+          // Continue polling on error
+          setTimeout(poll, 2000);
+        }
+      };
+      
+      // Start polling
+      setTimeout(poll, 2000);
+    },
+
+    // Stop queue polling
+    stopQueuePolling: () => {
+      set({ 
+        queuePolling: false,
+        queueStatus: null 
+      });
     },
 
     // Handle audio data with parallel processing and queue management
@@ -325,6 +407,9 @@ export const useSessionStore = create(
     stopRecording: async () => {
       const state = get();
       
+      // Stop queue polling first
+      state.stopQueuePolling();
+      
       // Stop media recorder
       if (state.mediaRecorder) {
         try {
@@ -336,18 +421,36 @@ export const useSessionStore = create(
 
       // Stop all audio stream tracks
       if (state.audioStream) {
-        state.audioStream.getTracks().forEach(track => track.stop());
+        try {
+          state.audioStream.getTracks().forEach(track => {
+            try {
+              track.stop();
+            } catch (e) {
+              console.warn('Error stopping audio track:', e);
+            }
+          });
+        } catch (e) {
+          console.warn('Error stopping audio stream:', e);
+        }
       }
 
       // Close SSE connections
       if (state.captionsSource) {
-        state.captionsSource.close();
+        try {
+          state.captionsSource.close();
+        } catch (e) {
+          console.warn('Error closing captions source:', e);
+        }
       }
       if (state.notesSource) {
-        state.notesSource.close();
+        try {
+          state.notesSource.close();
+        } catch (e) {
+          console.warn('Error closing notes source:', e);
+        }
       }
 
-      // End session on backend
+      // End session on backend (call POST /end to free capacity)
       if (state.sessionId) {
         try {
           await state.apiClient.endSession(state.sessionId);
@@ -364,6 +467,8 @@ export const useSessionStore = create(
         captionsSource: null,
         notesSource: null,
         sessionId: null,
+        queueStatus: null,
+        queuePolling: false,
         connectionStatus: { captions: false, notes: false, reconnecting: false }
       });
 

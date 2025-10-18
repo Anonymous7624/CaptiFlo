@@ -4,7 +4,7 @@ import os
 
 class Settings(BaseSettings):
     APP_NAME: str = "CaptionsNotes"
-    MAX_CONCURRENT_SESSIONS: int = 5
+    MAX_CONCURRENT_SESSIONS: int = 1
     SESSION_MINUTES: int = 40
     
     # CORS settings - production vs dev
@@ -15,8 +15,10 @@ class Settings(BaseSettings):
     ]
     
     # Whisper settings
-    WHISPER_MODEL: str = "base"
-    COMPUTE_TYPE: str = "int8"
+    WHISPER_MODEL: str = "large-v3"
+    WHISPER_DEVICE: str = "auto"  # auto|cuda|cpu
+    WHISPER_COMPUTE_TYPE_CUDA: str = "float16"
+    WHISPER_COMPUTE_TYPE_CPU: str = "int8"
     
     # Ollama settings
     NOTES_MODEL: str = "phi3:mini"

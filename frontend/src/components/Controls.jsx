@@ -14,7 +14,8 @@ function Controls({
   onStart,
   onStop,
   classOptions,
-  connectionStatus
+  connectionStatus,
+  queueStatus
 }) {
   const isLanguageClass = selectedClass === 'Spanish' || selectedClass === 'Mandarin';
   return (
@@ -104,13 +105,47 @@ function Controls({
 
         {/* Start/Stop button */}
         <div>
-          <button
-            onClick={isRecording ? onStop : onStart}
-            className={`button ${isRecording ? 'button-danger' : 'button-primary'}`}
-            style={{ width: '100%' }}
-          >
-            {isRecording ? 'Stop Recording' : 'Start Recording'}
-          </button>
+          {queueStatus && queueStatus.status === 'queued' ? (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{
+                padding: '0.75rem',
+                borderRadius: '8px',
+                background: 'rgba(255, 193, 7, 0.1)',
+                border: '1px solid rgba(255, 193, 7, 0.3)',
+                marginBottom: '0.5rem'
+              }}>
+                <div style={{
+                  fontSize: '0.875rem',
+                  fontWeight: '600',
+                  color: 'var(--text)',
+                  marginBottom: '0.25rem'
+                }}>
+                  You're in the queue
+                </div>
+                <div style={{
+                  fontSize: '0.75rem',
+                  color: 'var(--muted)'
+                }}>
+                  {queueStatus.position}/{queueStatus.size} — {queueStatus.position === 1 ? 'first in line' : `${queueStatus.position} in line`}
+                </div>
+              </div>
+              <button
+                onClick={onStop}
+                className="button button-secondary"
+                style={{ width: '100%' }}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={isRecording ? onStop : onStart}
+              className={`button ${isRecording ? 'button-danger' : 'button-primary'}`}
+              style={{ width: '100%' }}
+            >
+              {isRecording ? 'Stop Recording' : 'Start Recording'}
+            </button>
+          )}
         </div>
       </div>
 

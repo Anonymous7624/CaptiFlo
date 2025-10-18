@@ -223,7 +223,9 @@ async def captions(session: str):
                 has_new_data = False
                 
                 if current_text and current_text != last_sent_text:
-                    yield f"data: {current_text}\n\n"
+                    import json
+                    data = json.dumps({"text": current_text})
+                    yield f"data: {data}\n\n"
                     last_sent_text = current_text
                     last_keepalive = time.time()
                     has_new_data = True

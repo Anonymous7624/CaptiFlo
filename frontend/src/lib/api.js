@@ -56,17 +56,38 @@ export class ApiClient {
     return response;
   }
 
-  // Create SSE connection with auto-reconnect
+  // Create SSE connection with robust auto-reconnect
   createEventSource(endpoint, params = {}, onMessage, onError) {
     const url = this.buildUrl(endpoint, params);
     const eventSource = new EventSource(url);
     
+    // Initialize retry count for this specific endpoint
+    if (!this.retryCounts) this.retryCounts = new Map();
+    if (!this.retryCounts.has(endpoint)) this.retryCounts.set(endpoint, 0);
+    
     eventSource.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
-        onMessage(data);
+        // Handle different message formats
+        if (event.data.startsWith('{')) {
+          // JSON format
+          const data = JSON.parse(event.data);
+          onMessage(data);
+        } else {
+          // Plain text format (for notes and captions)
+          const text = event.data.trim();
+          if (text) {
+            // Determine if this is a caption or note based on endpoint
+            if (endpoint.includes('/captions')) {
+              onMessage({ text });
+            } else if (endpoint.includes('/notes')) {
+              onMessage({ note: text });
+            } else {
+              onMessage({ text });
+            }
+          }
+        }
       } catch (e) {
-        console.error('Failed to parse SSE message:', e);
+        console.error('Failed to parse SSE message:', e, 'Data:', event.data);
         onMessage({ error: 'Invalid message format' });
       }
     };
@@ -75,14 +96,19 @@ export class ApiClient {
       console.error('SSE Error:', error);
       if (onError) onError(error);
       
-      // Auto-reconnect with backoff (2s -> 5s)
+      // Auto-reconnect with exponential backoff (2s -> 5s -> 10s)
       if (eventSource.readyState === EventSource.CLOSED) {
-        const retryDelay = this.retryCount < 3 ? 2000 : 5000;
-        this.retryCount = (this.retryCount || 0) + 1;
+        const retryCount = this.retryCounts.get(endpoint) || 0;
+        let retryDelay = 2000; // Start with 2s
+        
+        if (retryCount >= 1) retryDelay = 5000; // 5s after first retry
+        if (retryCount >= 3) retryDelay = 10000; // 10s after third retry
+        
+        this.retryCounts.set(endpoint, retryCount + 1);
         
         setTimeout(() => {
           if (this.eventSources.has(endpoint)) {
-            console.log(`Attempting to reconnect SSE (attempt ${this.retryCount})...`);
+            console.log(`Attempting to reconnect SSE ${endpoint} (attempt ${retryCount + 1})...`);
             this.createEventSource(endpoint, params, onMessage, onError);
           }
         }, retryDelay);
@@ -90,7 +116,8 @@ export class ApiClient {
     };
 
     eventSource.onopen = () => {
-      this.retryCount = 0; // Reset retry count on successful connection
+      console.log(`SSE connection opened for ${endpoint}`);
+      this.retryCounts.set(endpoint, 0); // Reset retry count on successful connection
     };
 
     // Store reference for cleanup

@@ -19,23 +19,46 @@ class SessionState:
     start_ts: float = field(default_factory=time.time)
     last_text: str = ""
     rolling_text: List[str] = field(default_factory=list)
+    text_timestamps: List[float] = field(default_factory=list)  # Track when each text was added
     last_activity: float = field(default_factory=time.time)
     last_seen: float = field(default_factory=time.time)
     
     def add_text(self, text: str, max_rolling: int = 20):
         """Add text to rolling buffer, keeping only recent entries."""
         if text:
+            current_time = time.time()
             self.last_text = text
             self.rolling_text.append(text)
+            self.text_timestamps.append(current_time)
+            
+            # Keep only recent entries
             if len(self.rolling_text) > max_rolling:
                 self.rolling_text = self.rolling_text[-max_rolling:]
-            self.last_activity = time.time()
-            self.last_seen = time.time()
+                self.text_timestamps = self.text_timestamps[-max_rolling:]
+            
+            self.last_activity = current_time
+            self.last_seen = current_time
     
     def get_recent_text(self, count: int = 20) -> str:
         """Get recent text entries joined together."""
         recent = self.rolling_text[-count:] if self.rolling_text else []
         return " ".join(recent)
+    
+    def get_text_from_last_seconds(self, seconds: int = 10) -> str:
+        """Get text from the last N seconds."""
+        if not self.rolling_text or not self.text_timestamps:
+            return ""
+        
+        current_time = time.time()
+        cutoff_time = current_time - seconds
+        
+        # Find text entries from the last N seconds
+        recent_text = []
+        for i, timestamp in enumerate(self.text_timestamps):
+            if timestamp >= cutoff_time:
+                recent_text.append(self.rolling_text[i])
+        
+        return " ".join(recent_text)
     
     def is_expired(self) -> bool:
         """Check if session has exceeded TTL."""

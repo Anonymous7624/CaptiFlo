@@ -4,14 +4,19 @@ import ClassSelector from './ClassSelector';
 function Controls({
   selectedClass,
   setSelectedClass,
+  grade,
+  setGrade,
   micSensitivity,
   setMicSensitivity,
+  showEnglishCaptions,
+  setShowEnglishCaptions,
   isRecording,
   onStart,
   onStop,
   classOptions,
   connectionStatus
 }) {
+  const isLanguageClass = selectedClass === 'Spanish' || selectedClass === 'Mandarin';
   return (
     <div className="panel" style={{
       padding: '2rem',
@@ -19,8 +24,8 @@ function Controls({
     }}>
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: '2rem',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gap: '1.5rem',
         alignItems: 'end'
       }}>
         {/* Class selector */}
@@ -31,6 +36,34 @@ function Controls({
             classOptions={classOptions}
             disabled={isRecording}
           />
+        </div>
+
+        {/* Grade selector */}
+        <div>
+          <label style={{
+            display: 'block',
+            fontSize: '0.875rem',
+            fontWeight: '500',
+            color: 'var(--text)',
+            marginBottom: '0.5rem'
+          }}>
+            Grade Level
+          </label>
+          <select
+            value={grade}
+            onChange={(e) => setGrade(parseInt(e.target.value))}
+            disabled={isRecording}
+            className="select"
+            style={{
+              width: '100%',
+              opacity: isRecording ? 0.6 : 1,
+              cursor: isRecording ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {[6, 7, 8, 9, 10, 11, 12].map(g => (
+              <option key={g} value={g}>Grade {g}</option>
+            ))}
+          </select>
         </div>
 
         {/* Mic sensitivity */}
@@ -81,6 +114,45 @@ function Controls({
         </div>
       </div>
 
+      {/* Language toggle for Spanish/Mandarin */}
+      {isLanguageClass && (
+        <div style={{
+          marginTop: '1.5rem',
+          padding: '1rem',
+          borderRadius: '8px',
+          background: 'rgba(122, 162, 255, 0.05)',
+          border: '1px solid rgba(122, 162, 255, 0.1)'
+        }}>
+          <label style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            cursor: 'pointer',
+            fontSize: '0.875rem',
+            fontWeight: '500'
+          }}>
+            <input
+              type="checkbox"
+              checked={showEnglishCaptions}
+              onChange={(e) => setShowEnglishCaptions(e.target.checked)}
+              style={{
+                width: '18px',
+                height: '18px',
+                accentColor: 'var(--brand)'
+              }}
+            />
+            Show captions in English
+            <span style={{
+              fontSize: '0.75rem',
+              color: 'var(--muted)',
+              fontWeight: '400'
+            }}>
+              (UI only - translation coming soon)
+            </span>
+          </label>
+        </div>
+      )}
+
       {/* Connection status indicators */}
       {isRecording && (
         <div style={{
@@ -89,8 +161,8 @@ function Controls({
           marginTop: '1.5rem',
           justifyContent: 'center'
         }}>
-          <span className={`pill ${connectionStatus.captions ? 'live' : 'offline'}`}>
-            {connectionStatus.captions ? '● Captions Live' : '○ Captions Offline'}
+          <span className={`pill ${connectionStatus.captions ? 'live' : (connectionStatus.reconnecting ? 'reconnecting' : 'offline')}`}>
+            {connectionStatus.captions ? '● Captions Live' : (connectionStatus.reconnecting ? '○ Reconnecting...' : '○ Captions Offline')}
           </span>
           <span className={`pill ${connectionStatus.notes ? 'live' : 'offline'}`}>
             {connectionStatus.notes ? '● Notes Live' : '○ Notes Offline'}

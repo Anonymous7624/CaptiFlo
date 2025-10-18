@@ -12,13 +12,17 @@ from settings import settings
 router = APIRouter()
 
 @router.get("/notes")
-async def notes_stream(session: str, mode: str = "default"):
+async def notes_stream(session: str, mode: str = "default", grade: int = 9):
     """Stream live notes for a session."""
     
     # Validate mode
     valid_modes = ["Biology", "Mandarin", "Spanish", "English", "Global History", "default"]
     if mode not in valid_modes:
         mode = "default"
+    
+    # Validate grade
+    if grade < 6 or grade > 12:
+        grade = 9
     
     async def event_generator():
         last_sent_notes = ""
@@ -36,8 +40,8 @@ async def notes_stream(session: str, mode: str = "default"):
                 # Touch session to mark it as active
                 session_manager.touch_session(session)
                 
-                # Get recent text for notes generation
-                recent_text = session_state.get_recent_text(count=20)
+                # Get text from last 10 seconds for notes generation
+                recent_text = session_state.get_text_from_last_seconds(seconds=10)
                 has_new_data = False
                 
                 if recent_text:
@@ -45,11 +49,13 @@ async def notes_stream(session: str, mode: str = "default"):
                     current_hash = hash(recent_text)
                     if current_hash != last_text_hash:
                         notes = await notes_generator.get_notes_for_session(
-                            session, recent_text, mode
+                            session, recent_text, mode, grade
                         )
                         
                         if notes and notes != last_sent_notes:
-                            yield f"data: {notes}\n\n"
+                            import json
+                            data = json.dumps({"note": notes})
+                            yield f"data: {data}\n\n"
                             last_sent_notes = notes
                             last_keepalive = time.time()
                             has_new_data = True
@@ -61,8 +67,8 @@ async def notes_stream(session: str, mode: str = "default"):
                     yield ":keepalive\n\n"
                     last_keepalive = time.time()
                 
-                # Wait 5 seconds before next check
-                await asyncio.sleep(5.0)
+                # Wait 10 seconds before next check (to match 10-second window)
+                await asyncio.sleep(10.0)
                 
         except asyncio.CancelledError:
             # Client disconnected

@@ -6,77 +6,95 @@ import httpx
 from typing import Dict, Optional
 from settings import settings
 
-# Class-specific prompts for different lecture types
-PROMPTS = {
-    "Biology": """Based on this biology lecture transcript, create concise bullet points covering key concepts, processes, and terminology. Focus on:
+# Class-specific prompts for different lecture types with grade support
+def get_prompt_template(mode: str, grade: int) -> str:
+    """Get prompt template based on class mode and grade level."""
+    base_instruction = f"You are a {grade}th grader who is a pro at note-taking. You are sitting in a {mode} class while the teacher is giving a lecture. For every 10 seconds of transcript I give you, convert it to concise, high-quality study notes. If there are no meaningful notes in this segment, write nothing."
+    
+    prompts = {
+        "Biology": f"""{base_instruction}
+
+Based on this biology lecture transcript, create concise bullet points covering key concepts, processes, and terminology. Focus on:
 - Main biological processes or systems discussed
 - Key terminology and definitions
 - Important relationships or mechanisms
 - Any examples or case studies mentioned
 
-Transcript: {text}
+Transcript: {{text}}
 
 Generate 2-4 concise bullet points:""",
 
-    "Mandarin": """Based on this Mandarin language lesson transcript, create concise bullet points covering:
+        "Mandarin": f"""{base_instruction}
+
+Based on this Mandarin language lesson transcript, create concise bullet points covering:
 - New vocabulary words and their meanings
 - Grammar patterns or structures introduced
 - Cultural context or usage notes
 - Pronunciation or tone information if mentioned
 
-Transcript: {text}
+Transcript: {{text}}
 
 Generate 2-4 concise bullet points:""",
 
-    "Spanish": """Based on this Spanish language lesson transcript, create concise bullet points covering:
+        "Spanish": f"""{base_instruction}
+
+Based on this Spanish language lesson transcript, create concise bullet points covering:
 - New vocabulary and phrases
 - Grammar rules or conjugations discussed
 - Cultural context or regional variations
 - Practice exercises or examples mentioned
 
-Transcript: {text}
+Transcript: {{text}}
 
 Generate 2-4 concise bullet points:""",
 
-    "English": """Based on this English class transcript, create concise bullet points covering:
+        "English": f"""{base_instruction}
+
+Based on this English class transcript, create concise bullet points covering:
 - Literary devices, themes, or analysis discussed
 - Writing techniques or grammar concepts
 - Key readings or texts mentioned
 - Important assignments or deadlines
 
-Transcript: {text}
+Transcript: {{text}}
 
 Generate 2-4 concise bullet points:""",
 
-    "Global History": """Based on this global history lecture transcript, create concise bullet points covering:
+        "Global History": f"""{base_instruction}
+
+Based on this global history lecture transcript, create concise bullet points covering:
 - Historical events, dates, and key figures
 - Cause and effect relationships
 - Geographic regions or civilizations discussed
 - Important themes or patterns in history
 
-Transcript: {text}
+Transcript: {{text}}
 
 Generate 2-4 concise bullet points:""",
 
-    "default": """Based on this lecture transcript, create concise bullet points covering the main topics, key concepts, and important information discussed.
+        "default": f"""{base_instruction}
 
-Transcript: {text}
+Based on this lecture transcript, create concise bullet points covering the main topics, key concepts, and important information discussed.
+
+Transcript: {{text}}
 
 Generate 2-4 concise bullet points:"""
-}
+    }
+    
+    return prompts.get(mode, prompts["default"])
 
 class NotesGenerator:
     def __init__(self):
         self.client = httpx.AsyncClient(timeout=30.0)
         self.last_notes_cache: Dict[str, str] = {}
     
-    async def generate_notes(self, text: str, mode: str = "default") -> Optional[str]:
+    async def generate_notes(self, text: str, mode: str = "default", grade: int = 9) -> Optional[str]:
         """Generate notes from text using Ollama."""
         if not text.strip():
             return None
         
         # Get appropriate prompt
-        prompt_template = PROMPTS.get(mode, PROMPTS["default"])
+        prompt_template = get_prompt_template(mode, grade)
         prompt = prompt_template.format(text=text)
         
         try:
@@ -109,17 +127,17 @@ class NotesGenerator:
             print(f"Notes generation error: {e}")
             return None
     
-    async def get_notes_for_session(self, session_id: str, text: str, mode: str = "default") -> Optional[str]:
+    async def get_notes_for_session(self, session_id: str, text: str, mode: str = "default", grade: int = 9) -> Optional[str]:
         """Generate notes and cache to avoid duplicates."""
         if not text:
             return None
         
         # Check if we already generated notes for this exact text
-        cache_key = f"{session_id}:{mode}:{hash(text)}"
+        cache_key = f"{session_id}:{mode}:{grade}:{hash(text)}"
         if cache_key in self.last_notes_cache:
             return self.last_notes_cache[cache_key]
         
-        notes = await self.generate_notes(text, mode)
+        notes = await self.generate_notes(text, mode, grade)
         if notes:
             self.last_notes_cache[cache_key] = notes
             # Keep cache size manageable

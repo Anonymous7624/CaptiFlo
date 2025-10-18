@@ -4,7 +4,7 @@ import CaptionsPanel from '../components/CaptionsPanel';
 import Banner from '../components/Banner';
 import Toast from '../components/Toast';
 import { ApiClient, LANGUAGE_MAP, generateSessionId } from '../lib/api';
-import { AudioRecorder } from '../lib/audio';
+import { AudioRecorder, WebmRecorder, RawPcmRecorder } from '../lib/audio';
 
 function Dashboard() {
   // State management
@@ -29,6 +29,8 @@ function Dashboard() {
   // Refs
   const apiClientRef = useRef(new ApiClient());
   const audioRecorderRef = useRef(null);
+  const currentRecorderType = useRef('webm'); // Track which recorder type we're using
+  const ffmpegMissingDetected = useRef(false); // Track if FFmpeg is missing
 
   // Class options
   const classOptions = ['Biology', 'Mandarin', 'Spanish', 'English', 'Global History'];
@@ -65,7 +67,77 @@ function Dashboard() {
     setToast({ message, type });
   };
 
-  // Start recording
+  // Handle audio data with automatic fallback
+  const handleAudioData = async (audioBlob, params, stream) => {
+    try {
+      let response;
+      
+      // Send audio using appropriate endpoint
+      if (params.isRawPcm || currentRecorderType.current === 'raw') {
+        response = await apiClientRef.current.sendRawPcm(
+          audioBlob,
+          params.session,
+          params.lang,
+          params.vad
+        );
+      } else {
+        response = await apiClientRef.current.sendAudioBlob(
+          audioBlob,
+          params.session,
+          params.lang,
+          params.vad
+        );
+      }
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        
+        // Handle FFmpeg missing - switch to raw PCM automatically
+        if (errorData.error === 'ffmpeg_missing' && currentRecorderType.current === 'webm') {
+          console.log('FFmpeg missing detected, switching to Raw PCM fallback...');
+          ffmpegMissingDetected.current = true;
+          
+          // Stop current WebM recorder
+          if (audioRecorderRef.current) {
+            audioRecorderRef.current.stop();
+          }
+          
+          // Start Raw PCM recorder
+          currentRecorderType.current = 'raw';
+          const rawRecorder = new RawPcmRecorder();
+          audioRecorderRef.current = rawRecorder;
+          
+          await rawRecorder.start(stream, {
+            lang: params.lang,
+            vad: params.vad,
+            session: params.session,
+            onDataAvailable: async (rawBlob, rawParams) => {
+              await handleAudioData(rawBlob, rawParams, stream);
+            },
+            onError: (error) => {
+              console.error('Raw PCM recording error:', error);
+              showBanner('Audio recording failed.', 'error');
+              stopRecording();
+            }
+          });
+          
+          return; // Don't show error banner for FFmpeg missing
+        }
+        
+        // Handle other errors
+        if (errorData.error === 'capacity') {
+          showBanner('At capacity (5 sessions). Try later.', 'error');
+          stopRecording();
+        } else {
+          console.error('Audio upload failed:', response.status, errorData);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to send audio:', error);
+    }
+  };
+
+  // Start recording with automatic fallback
   const startRecording = async () => {
     try {
       clearBanner();
@@ -74,36 +146,30 @@ function Dashboard() {
       const newSessionId = generateSessionId();
       setSessionId(newSessionId);
 
-      // Create audio recorder
-      const audioRecorder = new AudioRecorder();
+      // Get user media first
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 16000
+        }
+      });
+
+      // Start with WebM recorder unless we already know FFmpeg is missing
+      const useRawPcm = ffmpegMissingDetected.current;
+      currentRecorderType.current = useRawPcm ? 'raw' : 'webm';
+      
+      const audioRecorder = useRawPcm ? new RawPcmRecorder() : new WebmRecorder();
       audioRecorderRef.current = audioRecorder;
 
-      // Start recording
-      await audioRecorder.start({
-        onDataAvailable: async (audioBlob) => {
-          try {
-            const response = await apiClientRef.current.sendAudioBlob(
-              audioBlob,
-              newSessionId,
-              LANGUAGE_MAP[selectedClass],
-              micSensitivity
-            );
-            
-            if (!response.ok) {
-              const errorData = await response.json().catch(() => ({}));
-              if (errorData.error === 'ffmpeg_missing') {
-                showBanner('Server needs FFmpeg installed.', 'error');
-                stopRecording();
-              } else if (errorData.error === 'capacity') {
-                showBanner('At capacity (5 sessions). Try later.', 'error');
-                stopRecording();
-              } else {
-                console.error('Audio upload failed:', response.status);
-              }
-            }
-          } catch (error) {
-            console.error('Failed to send audio:', error);
-          }
+      // Start recording with fallback logic
+      await audioRecorder.start(stream, {
+        lang: LANGUAGE_MAP[selectedClass],
+        vad: micSensitivity,
+        session: newSessionId,
+        onDataAvailable: async (audioBlob, params) => {
+          await handleAudioData(audioBlob, params, stream);
         },
         onError: (error) => {
           console.error('Audio recording error:', error);
@@ -152,7 +218,15 @@ function Dashboard() {
 
     } catch (error) {
       console.error('Failed to start recording:', error);
-      showBanner('Failed to start recording.', 'error');
+      
+      // Handle specific media access errors
+      if (error.name === 'NotAllowedError') {
+        showBanner('Microphone access denied.', 'error');
+      } else if (error.name === 'NotFoundError') {
+        showBanner('No microphone found.', 'error');
+      } else {
+        showBanner('Failed to start recording.', 'error');
+      }
     }
   };
 

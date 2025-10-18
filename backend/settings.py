@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     INACTIVE_SECS: int = 90
     KEEPALIVE_SECS: int = 10
     
+    # Raw PCM ingest fallback
+    ALLOW_RAW_INGEST: bool = True
+    
     @property
     def cors_origins(self) -> List[str]:
         if self.DEV_MODE:

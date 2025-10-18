@@ -36,6 +36,26 @@ export class ApiClient {
     return response;
   }
 
+  // Send raw PCM audio to ingest-raw endpoint
+  async sendRawPcm(blob, sessionId, language, vadLevel) {
+    const url = this.buildUrl('/ingest-raw', {
+      session: sessionId,
+      lang: language,
+      vad: vadLevel
+    });
+
+    const response = await fetch(url, {
+      method: 'POST',
+      body: blob,
+      headers: {
+        'Content-Type': 'application/octet-stream'
+      }
+    });
+
+    // Return response without throwing - let caller handle errors
+    return response;
+  }
+
   // Create SSE connection with auto-reconnect
   createEventSource(endpoint, params = {}, onMessage, onError) {
     const url = this.buildUrl(endpoint, params);

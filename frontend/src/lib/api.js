@@ -67,28 +67,24 @@ export class ApiClient {
     
     eventSource.onmessage = (event) => {
       try {
-        // Handle different message formats
-        if (event.data.startsWith('{')) {
-          // JSON format
-          const data = JSON.parse(event.data);
-          onMessage(data);
-        } else {
-          // Plain text format (for notes and captions)
-          const text = event.data.trim();
-          if (text) {
-            // Determine if this is a caption or note based on endpoint
-            if (endpoint.includes('/captions')) {
-              onMessage({ text });
-            } else if (endpoint.includes('/notes')) {
-              onMessage({ note: text });
-            } else {
-              onMessage({ text });
-            }
+        // Parse JSON from event.data
+        const data = JSON.parse(event.data);
+        
+        // Only display payload.text, ignore other fields
+        if (data.text) {
+          const trimmedText = data.text.trim();
+          if (trimmedText) {
+            onMessage({ text: trimmedText });
+          }
+        } else if (data.note) {
+          const trimmedNote = data.note.trim();
+          if (trimmedNote) {
+            onMessage({ note: trimmedNote });
           }
         }
       } catch (e) {
-        console.error('Failed to parse SSE message:', e, 'Data:', event.data);
-        onMessage({ error: 'Invalid message format' });
+        // Ignore lines that fail to parse (like keepalive comments)
+        console.debug('Ignoring non-JSON SSE message:', event.data);
       }
     };
 
@@ -178,4 +174,25 @@ export const LANGUAGE_MAP = {
 // Generate UUID for session
 export function generateSessionId() {
   return crypto.randomUUID();
+}
+
+// Reserve session or get queue status
+export async function reserveSession(sessionId) {
+  const url = new URL('/session', window.location.origin);
+  url.searchParams.append('session', sessionId);
+  
+  const response = await fetch(url.toString(), {
+    method: 'POST'
+  });
+  
+  return response.json();
+}
+
+// Get queue status
+export async function getQueueStatus(sessionId) {
+  const url = new URL('/queue', window.location.origin);
+  url.searchParams.append('session', sessionId);
+  
+  const response = await fetch(url.toString());
+  return response.json();
 }

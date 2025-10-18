@@ -9,8 +9,67 @@ import logging
 from faster_whisper import WhisperModel
 from settings import settings
 
-# Initialize Whisper model once at module load
-model = WhisperModel(settings.WHISPER_MODEL, compute_type=settings.COMPUTE_TYPE)
+# Initialize Whisper model once at module load with GPU/CPU fallback
+def initialize_whisper_model():
+    """Initialize Whisper model with automatic GPU/CPU fallback."""
+    device = settings.WHISPER_DEVICE
+    
+    if device == "auto":
+        # Try CUDA first, fallback to CPU
+        try:
+            import torch
+            if torch.cuda.is_available():
+                logging.info("CUDA detected, attempting to load Whisper model on GPU...")
+                model = WhisperModel(
+                    settings.WHISPER_MODEL, 
+                    device="cuda", 
+                    compute_type=settings.WHISPER_COMPUTE_TYPE_CUDA
+                )
+                logging.info(f"Whisper model '{settings.WHISPER_MODEL}' loaded successfully on GPU")
+                return model
+            else:
+                logging.info("CUDA not available, loading Whisper model on CPU...")
+        except Exception as e:
+            logging.warning(f"Failed to load Whisper model on GPU: {e}. Falling back to CPU...")
+        
+        # Fallback to CPU
+        model = WhisperModel(
+            settings.WHISPER_MODEL, 
+            device="cpu", 
+            compute_type=settings.WHISPER_COMPUTE_TYPE_CPU
+        )
+        logging.info(f"Whisper model '{settings.WHISPER_MODEL}' loaded successfully on CPU")
+        return model
+    
+    elif device == "cuda":
+        try:
+            model = WhisperModel(
+                settings.WHISPER_MODEL, 
+                device="cuda", 
+                compute_type=settings.WHISPER_COMPUTE_TYPE_CUDA
+            )
+            logging.info(f"Whisper model '{settings.WHISPER_MODEL}' loaded successfully on GPU")
+            return model
+        except Exception as e:
+            logging.warning(f"Failed to load Whisper model on GPU: {e}. Falling back to CPU...")
+            model = WhisperModel(
+                settings.WHISPER_MODEL, 
+                device="cpu", 
+                compute_type=settings.WHISPER_COMPUTE_TYPE_CPU
+            )
+            logging.info(f"Whisper model '{settings.WHISPER_MODEL}' loaded successfully on CPU (fallback)")
+            return model
+    
+    else:  # device == "cpu"
+        model = WhisperModel(
+            settings.WHISPER_MODEL, 
+            device="cpu", 
+            compute_type=settings.WHISPER_COMPUTE_TYPE_CPU
+        )
+        logging.info(f"Whisper model '{settings.WHISPER_MODEL}' loaded successfully on CPU")
+        return model
+
+model = initialize_whisper_model()
 
 class FFmpegMissing(Exception):
     """Custom exception for missing FFmpeg."""

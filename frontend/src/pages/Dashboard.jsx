@@ -14,6 +14,7 @@ function Dashboard() {
     isRecording,
     captions,
     connectionStatus,
+    queueStatus,
     showEnglishCaptions,
     setClassMode,
     setGrade,
@@ -126,6 +127,7 @@ function Dashboard() {
         onStop={handleStopRecording}
         classOptions={classOptions}
         connectionStatus={connectionStatus}
+        queueStatus={queueStatus}
       />
 
       <CaptionsPanel captions={captions} isRecording={isRecording} />

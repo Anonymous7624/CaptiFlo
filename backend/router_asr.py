@@ -194,6 +194,41 @@ async def delete_session(session: str):
     session_manager.remove_session(session)
     return JSONResponse({"ok": True, "message": "Session deleted"})
 
+@router.post("/session")
+async def reserve_session(session: str):
+    """
+    Reserve a session or add to queue.
+    
+    Args:
+        session: UUID session identifier (client-provided)
+    
+    Returns:
+        200: {"ok": true, "status": "active"} - session is ready
+        202: {"ok": true, "status": "queued", "position": N, "size": Q} - added to queue
+    """
+    result = session_manager.reserve_session(session)
+    
+    if result["status"] == "active":
+        return JSONResponse({"ok": True, **result})
+    else:  # queued
+        return JSONResponse({"ok": True, **result}, status_code=202)
+
+@router.get("/queue")
+async def get_queue_status(session: str):
+    """
+    Get queue status for a session.
+    
+    Args:
+        session: UUID session identifier
+    
+    Returns:
+        {"status": "active"} - session is active
+        {"status": "queued", "position": N, "size": Q} - session is queued
+        {"status": "none"} - session not found
+    """
+    result = session_manager.get_queue_status(session)
+    return JSONResponse(result)
+
 @router.get("/captions")
 async def captions(session: str):
     """
@@ -206,14 +241,24 @@ async def captions(session: str):
     async def event_generator():
         last_sent_text = ""
         last_keepalive = time.time()
+        wait_start = time.time()
         
         try:
             while True:
                 # Get session state
                 session_state = session_manager.get_session(session)
                 if not session_state:
-                    yield "event: end\ndata: {\"error\": \"Session not found or expired\"}\n\n"
-                    break
+                    # Wait up to 5 seconds for session to appear (prevents race conditions)
+                    if (time.time() - wait_start) < 5.0:
+                        # Send keepalive while waiting
+                        if (time.time() - last_keepalive) >= settings.KEEPALIVE_SECS:
+                            yield ":keepalive\n\n"
+                            last_keepalive = time.time()
+                        await asyncio.sleep(0.4)
+                        continue
+                    else:
+                        # Give up after 5 seconds
+                        break
                 
                 # Touch session to mark it as active
                 session_manager.touch_session(session)
@@ -242,10 +287,9 @@ async def captions(session: str):
             # Client disconnected
             pass
         except Exception as e:
-            try:
-                yield f"event: error\ndata: {{\"error\": \"Caption stream error: {str(e)}\"}}\n\n"
-            except:
-                pass  # Stream already closed
+            # Log error but don't send error frame to client
+            print(f"Caption stream error: {e}")
+            pass  # Stream already closed
     
     return EventSourceResponse(
         event_generator(),

@@ -213,3 +213,26 @@ def transcribe_chunk(pcm16: bytes, language: str = "auto") -> str:
     except Exception as e:
         print(f"Transcription error: {e}")
         return ""
+
+def transcribe_pcm16(pcm16_bytes: bytes, language: str) -> str:
+    """
+    Transcribe raw PCM16 data directly (for /ingest-raw endpoint).
+    Applies VAD and then transcribes with Whisper.
+    
+    Args:
+        pcm16_bytes: Raw 16kHz mono s16le PCM data
+        language: Language code or "auto" for detection
+    
+    Returns:
+        Transcribed text, empty string if no speech detected
+    """
+    if not pcm16_bytes:
+        return ""
+    
+    # Apply energy-gate VAD (using default sensitivity level 1)
+    filtered_pcm = apply_vad(pcm16_bytes, sensitivity=1)
+    if not filtered_pcm:
+        return ""
+    
+    # Transcribe the filtered audio
+    return transcribe_chunk(filtered_pcm, language)

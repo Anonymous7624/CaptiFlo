@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 from utils.session import session_manager
 from utils.rate_limit import rate_limiter
-from asr import webm_to_pcm16, apply_vad, transcribe_chunk
+from asr import webm_to_pcm16, apply_vad, transcribe_chunk, transcribe_pcm16
 from settings import settings
 
 router = APIRouter()
@@ -98,6 +98,75 @@ async def ingest(request: Request, session: str, lang: str = "auto", vad: int = 
         )
     except Exception as e:
         print(f"Ingest error for session {session}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "internal_error", "detail": f"Processing error: {str(e)[:200]}"}
+        )
+
+@router.post("/ingest-raw")
+async def ingest_raw(request: Request, session: str, lang: str = "auto", vad: int = 1):
+    """
+    Ingest raw PCM16 audio chunks for transcription (FFmpeg fallback path).
+    
+    Args:
+        session: UUID session identifier
+        lang: Language (auto, en, es, zh, or class names)
+        vad: VAD sensitivity level (0-3)
+    """
+    
+    # Check if raw ingest is allowed
+    if not settings.ALLOW_RAW_INGEST:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "raw_ingest_disabled", "detail": "Raw PCM ingest is disabled"}
+        )
+    
+    # Rate limiting per session
+    if not rate_limiter.is_allowed(session, tokens=1.0):
+        return JSONResponse(
+            status_code=429,
+            content={"error": "rate_limit", "detail": "Rate limit exceeded for session"}
+        )
+    
+    # Get or create session
+    session_state = session_manager.get_or_create_session(session)
+    if not session_state:
+        return JSONResponse(
+            status_code=429,
+            content={"error": "capacity", "detail": f"At capacity ({settings.MAX_CONCURRENT_SESSIONS} sessions)"}
+        )
+    
+    # Check Content-Type
+    content_type = request.headers.get("content-type", "").lower()
+    if content_type and "application/octet-stream" not in content_type:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "invalid_content_type", "detail": "Content-Type must be application/octet-stream"}
+        )
+    
+    # Get raw PCM data
+    pcm_buffer = await request.body()
+    if not pcm_buffer:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "no_audio"}
+        )
+    
+    try:
+        # Apply VAD and transcribe directly (transcribe_pcm16 handles VAD internally)
+        text = transcribe_pcm16(pcm_buffer, lang)
+        
+        # Update session with new text (this also touches the session)
+        if text:
+            session_state.add_text(text)
+        else:
+            # Touch session even if no text was transcribed
+            session_manager.touch_session(session)
+        
+        return JSONResponse({"ok": True, "partial": text})
+        
+    except Exception as e:
+        print(f"Raw ingest error for session {session}: {e}")
         return JSONResponse(
             status_code=500,
             content={"error": "internal_error", "detail": f"Processing error: {str(e)[:200]}"}

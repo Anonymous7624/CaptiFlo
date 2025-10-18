@@ -1,78 +1,42 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Toast from '../components/Toast';
 import ClassSelector from '../components/ClassSelector';
-import { ApiClient } from '../lib/api';
+import { useSessionStore } from '../store/session';
 
 function Notes() {
-  const [notes, setNotes] = useState([]);
-  const [sessionId, setSessionId] = useState(() => 
-    sessionStorage.getItem('sessionId') || null
-  );
-  const [selectedClass, setSelectedClass] = useState(() => 
-    localStorage.getItem('selectedClass') || 'Biology'
-  );
-  const [isConnected, setIsConnected] = useState(false);
-  const [toast, setToast] = useState(null);
-  
-  const apiClientRef = useRef(new ApiClient());
-  const classOptions = ['Biology', 'Mandarin', 'Spanish', 'English', 'Global History'];
+  // Use session store
+  const {
+    sessionId,
+    classMode,
+    grade,
+    notes,
+    connectionStatus,
+    showEnglishCaptions,
+    setClassMode,
+    setGrade,
+    setShowEnglishCaptions,
+    startNotesStream,
+    restoreSession
+  } = useSessionStore();
 
-  // Start notes stream when session is available
+  const [toast, setToast] = useState(null);
+  const classOptions = ['Biology', 'Mandarin', 'Spanish', 'English', 'Global History'];
+  const isLanguageClass = classMode === 'Spanish' || classMode === 'Mandarin';
+
+  // Restore session on mount and start notes stream if session exists
+  useEffect(() => {
+    const restoredSessionId = restoreSession();
+    if (restoredSessionId) {
+      startNotesStream(restoredSessionId);
+    }
+  }, []);
+
+  // Restart notes stream when class or grade changes
   useEffect(() => {
     if (sessionId) {
-      apiClientRef.current.startNotesStream(
-        sessionId,
-        selectedClass,
-        (data) => {
-          if (data.note) {
-            setNotes(prev => [...prev, data.note]);
-          }
-          setIsConnected(true);
-        },
-        (error) => {
-          console.error('Notes stream error:', error);
-          setIsConnected(false);
-        }
-      );
-    } else {
-      setIsConnected(false);
+      startNotesStream(sessionId);
     }
-
-    return () => {
-      apiClientRef.current.closeStream('/notes');
-    };
-  }, [sessionId, selectedClass]);
-
-  // Listen for session changes
-  useEffect(() => {
-    const handleStorageChange = () => {
-      const newSessionId = sessionStorage.getItem('sessionId');
-      setSessionId(newSessionId);
-      if (!newSessionId) {
-        setNotes([]);
-        setIsConnected(false);
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Also check periodically for session changes within the same tab
-    const interval = setInterval(() => {
-      const currentSessionId = sessionStorage.getItem('sessionId');
-      if (currentSessionId !== sessionId) {
-        setSessionId(currentSessionId);
-        if (!currentSessionId) {
-          setNotes([]);
-          setIsConnected(false);
-        }
-      }
-    }, 1000);
-
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
-    };
-  }, [sessionId]);
+  }, [classMode, grade]);
 
   // Copy all notes to clipboard
   const copyAllNotes = async () => {
@@ -87,36 +51,6 @@ function Notes() {
     } catch (error) {
       console.error('Failed to copy notes:', error);
       setToast({ message: 'Failed to copy notes', type: 'error' });
-    }
-  };
-
-  // Handle class change
-  const handleClassChange = (newClass) => {
-    setSelectedClass(newClass);
-    localStorage.setItem('selectedClass', newClass);
-    
-    // Clear current notes and restart stream with new class
-    setNotes([]);
-    if (sessionId) {
-      apiClientRef.current.closeStream('/notes');
-      
-      // Restart with new class
-      setTimeout(() => {
-        apiClientRef.current.startNotesStream(
-          sessionId,
-          newClass,
-          (data) => {
-            if (data.note) {
-              setNotes(prev => [...prev, data.note]);
-            }
-            setIsConnected(true);
-          },
-          (error) => {
-            console.error('Notes stream error:', error);
-            setIsConnected(false);
-          }
-        );
-      }, 100);
     }
   };
 
@@ -188,19 +122,55 @@ function Notes() {
           }}>
             Notes
           </h1>
-          <span className={`pill ${isConnected ? 'live' : 'offline'}`}>
-            {isConnected ? '● Notes Live' : '○ Offline'}
+          <span className={`pill ${connectionStatus.notes ? 'live' : 'offline'}`}>
+            {connectionStatus.notes ? '● Notes Live' : '○ Offline'}
           </span>
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-          <div style={{ minWidth: '300px' }}>
+          <div style={{ minWidth: '200px' }}>
             <ClassSelector
-              selectedClass={selectedClass}
-              onClassChange={handleClassChange}
+              selectedClass={classMode}
+              onClassChange={setClassMode}
               classOptions={classOptions}
             />
           </div>
+          
+          <div style={{ minWidth: '120px' }}>
+            <select
+              value={grade}
+              onChange={(e) => setGrade(parseInt(e.target.value))}
+              className="select"
+              style={{ width: '100%' }}
+            >
+              {[6, 7, 8, 9, 10, 11, 12].map(g => (
+                <option key={g} value={g}>Grade {g}</option>
+              ))}
+            </select>
+          </div>
+
+          {isLanguageClass && (
+            <label style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              cursor: 'pointer',
+              fontSize: '0.875rem',
+              fontWeight: '500'
+            }}>
+              <input
+                type="checkbox"
+                checked={showEnglishCaptions}
+                onChange={(e) => setShowEnglishCaptions(e.target.checked)}
+                style={{
+                  width: '16px',
+                  height: '16px',
+                  accentColor: 'var(--brand)'
+                }}
+              />
+              English captions
+            </label>
+          )}
           
           <button
             onClick={copyAllNotes}

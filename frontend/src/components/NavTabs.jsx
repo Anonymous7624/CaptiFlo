@@ -18,12 +18,6 @@ function NavTabs() {
       >
         Notes
       </Link>
-      <Link 
-        to="/games" 
-        className={location.pathname === '/games' ? 'active' : ''}
-      >
-        Games
-      </Link>
     </nav>
   );
 }

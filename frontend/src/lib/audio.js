@@ -10,7 +10,7 @@ export class WebmRecorder {
     this.onError = null;
   }
 
-  async start(stream, { lang, vad, session, onDataAvailable, onError }) {
+  async start(stream, { lang, vad, session, timeslice = 300, onDataAvailable, onError }) {
     try {
       this.stream = stream;
       this.onDataAvailable = onDataAvailable;
@@ -21,9 +21,10 @@ export class WebmRecorder {
         mimeType: 'audio/webm;codecs=opus'
       });
 
-      // Handle audio data every second
+      // Handle audio data with faster timeslice
       this.mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0 && this.onDataAvailable) {
+          // Fire parallel POST - don't await
           this.onDataAvailable(event.data, { lang, vad, session });
         }
       };
@@ -34,8 +35,8 @@ export class WebmRecorder {
         if (this.onError) this.onError(event.error);
       };
 
-      // Start recording with 1-second intervals
-      this.mediaRecorder.start(1000);
+      // Start recording with configurable timeslice (default 300ms)
+      this.mediaRecorder.start(timeslice);
       this.isRecording = true;
 
     } catch (error) {
@@ -76,15 +77,19 @@ export class RawPcmRecorder {
     this.chunkSize = 16000; // 1 second at 16kHz
   }
 
-  async start(stream, { lang, vad, session, onDataAvailable, onError }) {
+  async start(stream, { lang, vad, session, timeslice = 300, onDataAvailable, onError }) {
     try {
       this.stream = stream;
       this.onDataAvailable = onDataAvailable;
       this.onError = onError;
+      this.timeslice = timeslice;
 
       // Create audio context
       this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
       this.sampleRate = this.audioContext.sampleRate;
+      
+      // Adjust chunk size based on timeslice (samples per chunk)
+      this.chunkSize = Math.floor((this.targetSampleRate * timeslice) / 1000);
       
       // Create source node from stream
       this.sourceNode = this.audioContext.createMediaStreamSource(this.stream);

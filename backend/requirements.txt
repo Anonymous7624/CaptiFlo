@@ -8,3 +8,4 @@ httpx
 numpy
 faster-whisper
 soundfile
+google-cloud-speech>=2.26.0

@@ -14,11 +14,26 @@ class Settings(BaseSettings):
         "http://localhost:5173"  # for dev
     ]
     
-    # Whisper settings
+    # Transcription engine settings
+    TRANSCRIBE_ENGINE: str = "google_stt_v2"  # "whisper" or "google_stt_v2"
+    
+    # Whisper settings (kept for fallback)
     WHISPER_MODEL: str = "large-v3"
     WHISPER_DEVICE: str = "auto"  # auto|cuda|cpu
     WHISPER_COMPUTE_TYPE_CUDA: str = "float16"
     WHISPER_COMPUTE_TYPE_CPU: str = "int8"
+    
+    # Google Cloud Speech-to-Text v2 settings
+    GCP_LOCATION: str = "global"  # or a region like "us-central1"
+    GCP_RECOGNIZER_ID: str = "capiflow-default"
+    GCP_MODEL: str = "short"  # use "short" for ≤60s; later we can try "chirp" or "long"
+    GCP_LANGUAGE_MAP: dict = {
+        "Mandarin": "cmn-Hans-CN",
+        "Spanish": "es",
+        "English": "en-US",
+        "Biology": "en-US",
+        "Global History": "en-US",
+    }
     
     # Ollama settings
     NOTES_MODEL: str = "phi3:mini"

@@ -6,7 +6,7 @@ from router_notes import router as notes_router  # keep if you’ve added notes
 
 app = FastAPI(title="CaptionsNotes", docs_url=None, redoc_url=None)
 
-# Check FFmpeg availability on startup
+# Check FFmpeg availability and initialize Google Speech recognizer on startup
 @app.on_event("startup")
 async def startup_event():
     import logging
@@ -17,6 +17,17 @@ async def startup_event():
     except Exception as e:
         logging.error(f"FFmpeg not found on startup: {e}")
         logging.error("Audio ingestion will fail until FFmpeg is installed or FFMPEG_BIN is set correctly")
+    
+    # Initialize Google Speech recognizer if using Google STT v2
+    from settings import settings
+    if settings.TRANSCRIBE_ENGINE == "google_stt_v2":
+        try:
+            from stt_google_v2 import create_recognizer_if_not_exists
+            create_recognizer_if_not_exists()
+            logging.info("Google Cloud Speech v2 recognizer ready")
+        except Exception as e:
+            logging.error(f"Failed to initialize Google Speech recognizer: {e}")
+            logging.error("Google Speech transcription will fail until credentials and project are configured")
 
 # CORS — tighten to your domains when you’re done testing
 app.add_middleware(

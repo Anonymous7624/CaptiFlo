@@ -56,6 +56,26 @@ export class ApiClient {
     return response;
   }
 
+  // Send audio batch for transcription
+  async sendBatchTranscribe(blob, sessionId, interval, mode) {
+    const url = this.buildUrl('/batch_transcribe', {
+      session: sessionId,
+      interval: interval,
+      mode: mode
+    });
+
+    const response = await fetch(url, {
+      method: 'POST',
+      body: blob,
+      headers: {
+        'Content-Type': 'audio/webm;codecs=opus'
+      }
+    });
+
+    // Return response without throwing - let caller handle errors
+    return response;
+  }
+
   // Create SSE connection with robust auto-reconnect
   createEventSource(endpoint, params = {}, onMessage, onError) {
     const url = this.buildUrl(endpoint, params);

@@ -155,3 +155,51 @@ class NotesGenerator:
 
 # Global notes generator instance
 notes_generator = NotesGenerator()
+
+def generate_notes_for_text(text: str, custom_prompt: str = None, mode: str = "default", grade: int = 9) -> Optional[str]:
+    """
+    Synchronous wrapper for generating notes from text.
+    Used for batch transcription where we need immediate results.
+    """
+    if not text.strip():
+        return None
+    
+    try:
+        import httpx
+        
+        # Use custom prompt if provided, otherwise use template
+        if custom_prompt:
+            prompt = custom_prompt.replace("{text}", text)
+        else:
+            prompt_template = get_prompt_template(mode, grade)
+            prompt = prompt_template.format(text=text)
+        
+        payload = {
+            "model": settings.NOTES_MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0.3,
+                "top_p": 0.9,
+                "max_tokens": 200
+            }
+        }
+        
+        with httpx.Client(timeout=30.0) as client:
+            response = client.post(
+                settings.OLLAMA_URL,
+                json=payload,
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                notes = result.get("response", "").strip()
+                return notes if notes else None
+            else:
+                print(f"Ollama error: {response.status_code} - {response.text}")
+                return None
+                
+    except Exception as e:
+        print(f"Synchronous notes generation error: {e}")
+        return None

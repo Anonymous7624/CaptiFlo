@@ -10,29 +10,21 @@ export const useSessionStore = create(
     sessionId: sessionStorage.getItem('sessionId') || null,
     classMode: localStorage.getItem('selectedClass') || 'Biology',
     grade: parseInt(localStorage.getItem('grade')) || 9,
-    vad: parseInt(localStorage.getItem('micSensitivity')) || 2,
+    interval: parseInt(localStorage.getItem('batchInterval')) || 30,
     isRecording: false,
-    showEnglishCaptions: localStorage.getItem('showEnglishCaptions') === 'true',
 
     // Audio/Recording state
     mediaRecorder: null,
     audioStream: null,
-    currentRecorderType: 'webm',
-    ffmpegMissingDetected: false,
-
-    // SSE connections
-    captionsSource: null,
-    notesSource: null,
+    batchTimer: null,
+    currentBatch: null,
 
     // Data
-    captions: [],
-    notes: [],
+    batches: [], // Array of {timestamp, text, notes}
 
     // Connection status
     connectionStatus: {
-      captions: false,
-      notes: false,
-      reconnecting: false
+      batch: false
     },
 
     // Queue status
@@ -53,30 +45,18 @@ export const useSessionStore = create(
       localStorage.setItem('grade', grade.toString());
     },
 
-    setVad: (vad) => {
-      set({ vad });
-      localStorage.setItem('micSensitivity', vad.toString());
+    setInterval: (interval) => {
+      set({ interval });
+      localStorage.setItem('batchInterval', interval.toString());
     },
 
-    setShowEnglishCaptions: (show) => {
-      set({ showEnglishCaptions: show });
-      localStorage.setItem('showEnglishCaptions', show.toString());
-    },
-
-    addCaption: (caption) => {
+    addBatch: (batch) => {
       set((state) => ({
-        captions: [...state.captions, caption]
+        batches: [...state.batches, batch]
       }));
     },
 
-    addNote: (note) => {
-      set((state) => ({
-        notes: [...state.notes, note]
-      }));
-    },
-
-    clearCaptions: () => set({ captions: [] }),
-    clearNotes: () => set({ notes: [] }),
+    clearBatches: () => set({ batches: [] }),
 
     setConnectionStatus: (updates) => {
       set((state) => ({
@@ -148,39 +128,18 @@ export const useSessionStore = create(
 
         set({ audioStream: stream });
 
-        // Create recorder with 300ms timeslice
-        const useRawPcm = state.ffmpegMissingDetected;
-        const recorder = useRawPcm ? new RawPcmRecorder() : new WebmRecorder();
-        
-        set({ 
-          mediaRecorder: recorder,
-          currentRecorderType: useRawPcm ? 'raw' : 'webm'
-        });
+        // Create WebM recorder for batch recording
+        const recorder = new WebmRecorder();
+        set({ mediaRecorder: recorder });
 
-        // Start recording with faster timeslice and parallel processing
-        await recorder.start(stream, {
-          lang: LANGUAGE_MAP[state.classMode],
-          vad: state.vad,
-          session: sessionId,
-          timeslice: 300, // 300ms for faster response
-          onDataAvailable: async (audioBlob, params) => {
-            await state.handleAudioData(audioBlob, params, stream);
-          },
-          onError: (error) => {
-            console.error('Audio recording error:', error);
-            state.stopRecording();
-          }
-        });
-
-        // Start SSE streams immediately
-        state.startCaptionsStream(sessionId);
-        state.startNotesStream(sessionId);
+        // Start batch recording
+        state.startBatchRecording(stream, sessionId);
 
         set({ 
           isRecording: true,
-          captions: [],
+          batches: [],
           queueStatus: { status: "active" },
-          connectionStatus: { captions: false, notes: false, reconnecting: false }
+          connectionStatus: { batch: true }
         });
 
         return true;
@@ -236,172 +195,94 @@ export const useSessionStore = create(
       });
     },
 
-    // Handle audio data with parallel processing and queue management
-    handleAudioData: async (audioBlob, params, stream) => {
+    // Start batch recording
+    startBatchRecording: (stream, sessionId) => {
       const state = get();
       
-      // Implement queue to prevent flooding (max 3 inflight requests)
-      if (!state.inflightRequests) {
-        state.inflightRequests = new Set();
-      }
-
-      if (state.inflightRequests.size >= 3) {
-        console.log('Dropping audio chunk - too many inflight requests');
-        return;
-      }
-
-      const requestId = Date.now() + Math.random();
-      state.inflightRequests.add(requestId);
-
-      try {
-        let response;
+      const recordBatch = async () => {
+        if (!state.isRecording) return;
         
-        if (params.isRawPcm || state.currentRecorderType === 'raw') {
-          response = await state.apiClient.sendRawPcm(
-            audioBlob,
-            params.session,
-            params.lang,
-            params.vad
-          );
-        } else {
-          response = await state.apiClient.sendAudioBlob(
-            audioBlob,
-            params.session,
-            params.lang,
-            params.vad
-          );
-        }
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
+        try {
+          // Start recording a batch
+          const recorder = state.mediaRecorder;
+          const chunks = [];
           
-          // Handle FFmpeg missing - switch to raw PCM automatically
-          if (errorData.error === 'ffmpeg_missing' && state.currentRecorderType === 'webm') {
-            console.log('FFmpeg missing detected, switching to Raw PCM fallback...');
-            set({ ffmpegMissingDetected: true });
-            
-            // Stop current recorder and restart with raw PCM
-            if (state.mediaRecorder) {
-              state.mediaRecorder.stop();
+          // Create a new MediaRecorder for this batch
+          const mediaRecorder = new MediaRecorder(stream, {
+            mimeType: 'audio/webm;codecs=opus'
+          });
+          
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              chunks.push(event.data);
             }
-            
-            const rawRecorder = new RawPcmRecorder();
-            set({ 
-              mediaRecorder: rawRecorder,
-              currentRecorderType: 'raw'
-            });
-            
-            await rawRecorder.start(stream, {
-              lang: params.lang,
-              vad: params.vad,
-              session: params.session,
-              timeslice: 300,
-              onDataAvailable: async (rawBlob, rawParams) => {
-                await state.handleAudioData(rawBlob, rawParams, stream);
-              },
-              onError: (error) => {
-                console.error('Raw PCM recording error:', error);
-                state.stopRecording();
-              }
-            });
-            
-            return;
-          }
+          };
           
-          if (errorData.error === 'capacity') {
-            console.error('At capacity (5 sessions). Try later.');
-            state.stopRecording();
+          mediaRecorder.onstop = async () => {
+            if (chunks.length > 0) {
+              const audioBlob = new Blob(chunks, { type: 'audio/webm;codecs=opus' });
+              await state.processBatch(audioBlob, sessionId);
+            }
+          };
+          
+          // Record for the specified interval
+          mediaRecorder.start();
+          
+          setTimeout(() => {
+            if (mediaRecorder.state === 'recording') {
+              mediaRecorder.stop();
+            }
+          }, state.interval * 1000);
+          
+        } catch (error) {
+          console.error('Batch recording error:', error);
+          set({ connectionStatus: { batch: false } });
+        }
+      };
+      
+      // Start first batch immediately
+      recordBatch();
+      
+      // Set up timer for subsequent batches
+      const timer = setInterval(recordBatch, state.interval * 1000);
+      set({ batchTimer: timer });
+    },
+
+    // Process a completed batch
+    processBatch: async (audioBlob, sessionId) => {
+      const state = get();
+      
+      try {
+        const response = await state.apiClient.sendBatchTranscribe(
+          audioBlob,
+          sessionId,
+          state.interval,
+          state.classMode
+        );
+        
+        if (response.ok) {
+          const result = await response.json();
+          
+          if (result.ok) {
+            const batch = {
+              timestamp: new Date().toLocaleTimeString(),
+              text: result.text || '',
+              notes: result.notes || []
+            };
+            
+            state.addBatch(batch);
+            set({ connectionStatus: { batch: true } });
           }
+        } else {
+          console.error('Batch transcription failed:', response.status);
+          set({ connectionStatus: { batch: false } });
         }
       } catch (error) {
-        console.error('Failed to send audio:', error);
-      } finally {
-        state.inflightRequests.delete(requestId);
+        console.error('Failed to process batch:', error);
+        set({ connectionStatus: { batch: false } });
       }
     },
 
-    // Start captions stream with auto-reconnect
-    startCaptionsStream: (sessionId) => {
-      const state = get();
-      
-      if (state.captionsSource) {
-        state.captionsSource.close();
-      }
-
-      set({ connectionStatus: { ...state.connectionStatus, reconnecting: true } });
-
-      const eventSource = state.apiClient.createEventSource(
-        '/captions',
-        { session: sessionId },
-        (data) => {
-          if (data.text) {
-            state.addCaption(data.text);
-          }
-          set({ 
-            connectionStatus: { 
-              ...get().connectionStatus, 
-              captions: true, 
-              reconnecting: false 
-            }
-          });
-        },
-        (error) => {
-          console.error('Captions stream error:', error);
-          set({ 
-            connectionStatus: { 
-              ...get().connectionStatus, 
-              captions: false,
-              reconnecting: true
-            }
-          });
-        }
-      );
-
-      set({ captionsSource: eventSource });
-    },
-
-    // Start notes stream with grade support
-    startNotesStream: (sessionId) => {
-      const state = get();
-      
-      if (state.notesSource) {
-        state.notesSource.close();
-      }
-
-      // Clear existing notes when starting new stream
-      set({ notes: [] });
-
-      const eventSource = state.apiClient.createEventSource(
-        '/notes',
-        { 
-          session: sessionId, 
-          mode: state.classMode,
-          grade: state.grade
-        },
-        (data) => {
-          if (data.note) {
-            state.addNote(data.note);
-          }
-          set({ 
-            connectionStatus: { 
-              ...get().connectionStatus, 
-              notes: true 
-            }
-          });
-        },
-        (error) => {
-          console.error('Notes stream error:', error);
-          set({ 
-            connectionStatus: { 
-              ...get().connectionStatus, 
-              notes: false 
-            }
-          });
-        }
-      );
-
-      set({ notesSource: eventSource });
-    },
 
     // Stop recording (idempotent)
     stopRecording: async () => {
@@ -410,13 +291,9 @@ export const useSessionStore = create(
       // Stop queue polling first
       state.stopQueuePolling();
       
-      // Stop media recorder
-      if (state.mediaRecorder) {
-        try {
-          state.mediaRecorder.stop();
-        } catch (e) {
-          console.warn('Error stopping media recorder:', e);
-        }
+      // Stop batch timer
+      if (state.batchTimer) {
+        clearInterval(state.batchTimer);
       }
 
       // Stop all audio stream tracks
@@ -434,22 +311,6 @@ export const useSessionStore = create(
         }
       }
 
-      // Close SSE connections
-      if (state.captionsSource) {
-        try {
-          state.captionsSource.close();
-        } catch (e) {
-          console.warn('Error closing captions source:', e);
-        }
-      }
-      if (state.notesSource) {
-        try {
-          state.notesSource.close();
-        } catch (e) {
-          console.warn('Error closing notes source:', e);
-        }
-      }
-
       // End session on backend (call POST /end to free capacity)
       if (state.sessionId) {
         try {
@@ -464,12 +325,11 @@ export const useSessionStore = create(
         isRecording: false,
         mediaRecorder: null,
         audioStream: null,
-        captionsSource: null,
-        notesSource: null,
+        batchTimer: null,
         sessionId: null,
         queueStatus: null,
         queuePolling: false,
-        connectionStatus: { captions: false, notes: false, reconnecting: false }
+        connectionStatus: { batch: false }
       });
 
       sessionStorage.removeItem('sessionId');

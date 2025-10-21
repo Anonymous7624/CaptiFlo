@@ -10,16 +10,14 @@ function Dashboard() {
   const {
     classMode,
     grade,
-    vad,
+    interval,
     isRecording,
-    captions,
+    batches,
     connectionStatus,
     queueStatus,
-    showEnglishCaptions,
     setClassMode,
     setGrade,
-    setVad,
-    setShowEnglishCaptions,
+    setInterval,
     startRecording,
     stopRecording,
     restoreSession
@@ -118,10 +116,8 @@ function Dashboard() {
         setSelectedClass={setClassMode}
         grade={grade}
         setGrade={setGrade}
-        micSensitivity={vad}
-        setMicSensitivity={setVad}
-        showEnglishCaptions={showEnglishCaptions}
-        setShowEnglishCaptions={setShowEnglishCaptions}
+        interval={interval}
+        setInterval={setInterval}
         isRecording={isRecording}
         onStart={handleStartRecording}
         onStop={handleStopRecording}
@@ -130,7 +126,7 @@ function Dashboard() {
         queueStatus={queueStatus}
       />
 
-      <CaptionsPanel captions={captions} isRecording={isRecording} />
+      <CaptionsPanel batches={batches} isRecording={isRecording} interval={interval} />
     </div>
   );
 }

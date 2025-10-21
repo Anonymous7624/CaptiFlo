@@ -8,8 +8,8 @@ function Controls({
   setGrade,
   micSensitivity,
   setMicSensitivity,
-  showEnglishCaptions,
-  setShowEnglishCaptions,
+  interval,
+  setInterval,
   isRecording,
   onStart,
   onStop,
@@ -67,7 +67,7 @@ function Controls({
           </select>
         </div>
 
-        {/* Mic sensitivity */}
+        {/* Batch interval selector */}
         <div>
           <label style={{
             display: 'block',
@@ -76,31 +76,22 @@ function Controls({
             color: 'var(--text)',
             marginBottom: '0.5rem'
           }}>
-            Sensitivity: {micSensitivity}
+            Batch Interval
           </label>
-          <input
-            type="range"
-            min="0"
-            max="3"
-            value={micSensitivity}
-            onChange={(e) => setMicSensitivity(parseInt(e.target.value))}
+          <select
+            value={interval}
+            onChange={(e) => setInterval(parseInt(e.target.value))}
             disabled={isRecording}
-            className="slider"
+            className="select"
             style={{
+              width: '100%',
               opacity: isRecording ? 0.6 : 1,
               cursor: isRecording ? 'not-allowed' : 'pointer'
             }}
-          />
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            fontSize: '0.75rem',
-            color: 'var(--muted)',
-            marginTop: '0.25rem'
-          }}>
-            <span>Low</span>
-            <span>High</span>
-          </div>
+          >
+            <option value={30}>30 seconds</option>
+            <option value={60}>60 seconds</option>
+          </select>
         </div>
 
         {/* Start/Stop button */}
@@ -149,46 +140,8 @@ function Controls({
         </div>
       </div>
 
-      {/* Language toggle for Spanish/Mandarin */}
-      {isLanguageClass && (
-        <div style={{
-          marginTop: '1.5rem',
-          padding: '1rem',
-          borderRadius: '8px',
-          background: 'rgba(122, 162, 255, 0.05)',
-          border: '1px solid rgba(122, 162, 255, 0.1)'
-        }}>
-          <label style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.75rem',
-            cursor: 'pointer',
-            fontSize: '0.875rem',
-            fontWeight: '500'
-          }}>
-            <input
-              type="checkbox"
-              checked={showEnglishCaptions}
-              onChange={(e) => setShowEnglishCaptions(e.target.checked)}
-              style={{
-                width: '18px',
-                height: '18px',
-                accentColor: 'var(--brand)'
-              }}
-            />
-            Show captions in English
-            <span style={{
-              fontSize: '0.75rem',
-              color: 'var(--muted)',
-              fontWeight: '400'
-            }}>
-              (UI only - translation coming soon)
-            </span>
-          </label>
-        </div>
-      )}
 
-      {/* Connection status indicators */}
+      {/* Batch status indicator */}
       {isRecording && (
         <div style={{
           display: 'flex',
@@ -196,11 +149,8 @@ function Controls({
           marginTop: '1.5rem',
           justifyContent: 'center'
         }}>
-          <span className={`pill ${connectionStatus.captions ? 'live' : (connectionStatus.reconnecting ? 'reconnecting' : 'offline')}`}>
-            {connectionStatus.captions ? '● Captions Live' : (connectionStatus.reconnecting ? '○ Reconnecting...' : '○ Captions Offline')}
-          </span>
-          <span className={`pill ${connectionStatus.notes ? 'live' : 'offline'}`}>
-            {connectionStatus.notes ? '● Notes Live' : '○ Notes Offline'}
+          <span className={`pill ${connectionStatus.batch ? 'live' : 'offline'}`}>
+            {connectionStatus.batch ? '● Batch Processing' : '○ Batch Offline'}
           </span>
         </div>
       )}

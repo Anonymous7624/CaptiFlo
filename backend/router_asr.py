@@ -301,3 +301,289 @@ async def captions(session: str):
             "Access-Control-Allow-Headers": "Cache-Control"
         }
     )
+
+@router.post("/batch_transcribe")
+async def batch_transcribe(request: Request, session: str, interval: int = 30, mode: str = "English"):
+    """
+    Batch transcribe audio using Google Cloud Speech-to-Text v2 or Whisper.
+    
+    Args:
+        session: UUID session identifier
+        interval: Batch interval in seconds (30 or 60)
+        mode: Class mode for language mapping and notes generation
+    """
+    
+    # Validate interval
+    if interval not in [30, 60]:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "invalid_interval", "detail": "Interval must be 30 or 60 seconds"}
+        )
+    
+    # Rate limiting per session
+    if not rate_limiter.is_allowed(session, tokens=1.0):
+        return JSONResponse(
+            status_code=429,
+            content={"error": "rate_limit", "detail": "Rate limit exceeded for session"}
+        )
+    
+    # Get or create session
+    session_state = session_manager.get_or_create_session(session)
+    if not session_state:
+        return JSONResponse(
+            status_code=429,
+            content={"error": "capacity", "detail": f"At capacity ({settings.MAX_CONCURRENT_SESSIONS} sessions)"}
+        )
+    
+    # Check Content-Type (be flexible)
+    content_type = request.headers.get("content-type", "").lower()
+    allowed_types = ["audio/webm", "audio/ogg", "application/octet-stream"]
+    if content_type and not any(ct in content_type for ct in allowed_types):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "invalid_content_type", "detail": f"Content-Type must be one of: {', '.join(allowed_types)}"}
+        )
+    
+    # Get audio data
+    audio_buffer = await request.body()
+    if not audio_buffer:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "no_audio"}
+        )
+    
+    try:
+        # Decode audio to 16kHz mono PCM
+        pcm_data = webm_to_pcm16(audio_buffer)
+        if not pcm_data:
+            session_manager.touch_session(session)
+            return JSONResponse({"ok": True, "text": "", "notes": []})
+        
+        # Verify duration doesn't exceed 60s
+        estimated_duration_seconds = len(pcm_data) / 32000  # 16kHz mono s16le = 32,000 bytes per second
+        if estimated_duration_seconds > 60:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "duration_exceeded", "detail": f"Audio duration ~{estimated_duration_seconds:.1f}s exceeds 60s limit"}
+            )
+        
+        # Transcribe using selected engine
+        text = ""
+        if settings.TRANSCRIBE_ENGINE == "google_stt_v2":
+            try:
+                from stt_google_v2 import recognize_short, map_language_to_gcp
+                language_code = map_language_to_gcp(mode)
+                text = recognize_short(pcm_data, language_code)
+            except Exception as e:
+                print(f"Google Speech v2 failed, falling back to Whisper: {e}")
+                # Fallback to Whisper
+                filtered_pcm = apply_vad(pcm_data, sensitivity=1)
+                if filtered_pcm:
+                    text = transcribe_chunk(filtered_pcm, mode)
+        else:
+            # Use Whisper
+            filtered_pcm = apply_vad(pcm_data, sensitivity=1)
+            if filtered_pcm:
+                text = transcribe_chunk(filtered_pcm, mode)
+        
+        # Generate notes if we have text
+        notes = []
+        if text and text.strip():
+            try:
+                from notes import generate_notes_for_text
+                # Extract grade from session or use default
+                grade = getattr(session_state, 'grade', '9')  # Default to 9th grade
+                
+                # Generate notes with appropriate prompt
+                prompt = f"You are a {grade}th grader in {mode}. Convert this {interval}-second transcript into concise, useful notes. If there's nothing meaningful, write nothing."
+                notes_text = generate_notes_for_text(text, prompt)
+                
+                if notes_text and notes_text.strip():
+                    # Split notes into bullet points
+                    notes = [line.strip() for line in notes_text.split('\n') if line.strip()]
+                    # Ensure bullet points start with •
+                    notes = [f"• {note}" if not note.startswith('•') else note for note in notes]
+            except Exception as e:
+                print(f"Notes generation failed: {e}")
+                # Continue without notes
+        
+        # Update session with new text (this also touches the session)
+        if text:
+            session_state.add_text(text)
+        else:
+            session_manager.touch_session(session)
+        
+        return JSONResponse({
+            "ok": True,
+            "text": text,
+            "notes": notes
+        })
+        
+    except FileNotFoundError as e:
+        if "ffmpeg_missing" in str(e):
+            return JSONResponse(
+                status_code=503,
+                content={"error": "ffmpeg_missing", "detail": "FFmpeg not found on server"}
+            )
+        raise
+    except subprocess.CalledProcessError as e:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "decode_failed", "detail": str(e)[:200]}
+        )
+    except ValueError as e:
+        if "exceeds" in str(e):
+            return JSONResponse(
+                status_code=400,
+                content={"error": "size_limit_exceeded", "detail": str(e)}
+            )
+        raise
+    except Exception as e:
+        print(f"Batch transcribe error for session {session}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "internal_error", "detail": f"Processing error: {str(e)[:200]}"}
+        )
+
+@router.post("/batch_transcribe")
+async def batch_transcribe(request: Request, session: str, interval: int = 30, mode: str = "English"):
+    """
+    Batch transcribe audio using Google Cloud Speech-to-Text v2 or Whisper.
+    
+    Args:
+        session: UUID session identifier
+        interval: Batch interval in seconds (30 or 60)
+        mode: Class mode for language mapping and notes generation
+    """
+    
+    # Validate interval
+    if interval not in [30, 60]:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "invalid_interval", "detail": "Interval must be 30 or 60 seconds"}
+        )
+    
+    # Rate limiting per session
+    if not rate_limiter.is_allowed(session, tokens=1.0):
+        return JSONResponse(
+            status_code=429,
+            content={"error": "rate_limit", "detail": "Rate limit exceeded for session"}
+        )
+    
+    # Get or create session
+    session_state = session_manager.get_or_create_session(session)
+    if not session_state:
+        return JSONResponse(
+            status_code=429,
+            content={"error": "capacity", "detail": f"At capacity ({settings.MAX_CONCURRENT_SESSIONS} sessions)"}
+        )
+    
+    # Check Content-Type (be flexible)
+    content_type = request.headers.get("content-type", "").lower()
+    allowed_types = ["audio/webm", "audio/ogg", "application/octet-stream"]
+    if content_type and not any(ct in content_type for ct in allowed_types):
+        return JSONResponse(
+            status_code=400,
+            content={"error": "invalid_content_type", "detail": f"Content-Type must be one of: {', '.join(allowed_types)}"}
+        )
+    
+    # Get audio data
+    audio_buffer = await request.body()
+    if not audio_buffer:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "no_audio"}
+        )
+    
+    try:
+        # Decode audio to 16kHz mono PCM
+        pcm_data = webm_to_pcm16(audio_buffer)
+        if not pcm_data:
+            session_manager.touch_session(session)
+            return JSONResponse({"ok": True, "text": "", "notes": []})
+        
+        # Verify duration doesn't exceed 60s
+        estimated_duration_seconds = len(pcm_data) / 32000  # 16kHz mono s16le = 32,000 bytes per second
+        if estimated_duration_seconds > 60:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "duration_exceeded", "detail": f"Audio duration ~{estimated_duration_seconds:.1f}s exceeds 60s limit"}
+            )
+        
+        # Transcribe using selected engine
+        text = ""
+        if settings.TRANSCRIBE_ENGINE == "google_stt_v2":
+            try:
+                from stt_google_v2 import recognize_short, map_language_to_gcp
+                language_code = map_language_to_gcp(mode)
+                text = recognize_short(pcm_data, language_code)
+            except Exception as e:
+                print(f"Google Speech v2 failed, falling back to Whisper: {e}")
+                # Fallback to Whisper
+                filtered_pcm = apply_vad(pcm_data, sensitivity=1)
+                if filtered_pcm:
+                    text = transcribe_chunk(filtered_pcm, mode)
+        else:
+            # Use Whisper
+            filtered_pcm = apply_vad(pcm_data, sensitivity=1)
+            if filtered_pcm:
+                text = transcribe_chunk(filtered_pcm, mode)
+        
+        # Generate notes if we have text
+        notes = []
+        if text and text.strip():
+            try:
+                from notes import generate_notes_for_text
+                # Extract grade from session or use default
+                grade = getattr(session_state, 'grade', '9')  # Default to 9th grade
+                
+                # Generate notes with appropriate prompt
+                prompt = f"You are a {grade}th grader in {mode}. Convert this {interval}-second transcript into concise, useful notes. If there's nothing meaningful, write nothing."
+                notes_text = generate_notes_for_text(text, prompt)
+                
+                if notes_text and notes_text.strip():
+                    # Split notes into bullet points
+                    notes = [line.strip() for line in notes_text.split('\n') if line.strip()]
+                    # Ensure bullet points start with •
+                    notes = [f"• {note}" if not note.startswith('•') else note for note in notes]
+            except Exception as e:
+                print(f"Notes generation failed: {e}")
+                # Continue without notes
+        
+        # Update session with new text (this also touches the session)
+        if text:
+            session_state.add_text(text)
+        else:
+            session_manager.touch_session(session)
+        
+        return JSONResponse({
+            "ok": True,
+            "text": text,
+            "notes": notes
+        })
+        
+    except FileNotFoundError as e:
+        if "ffmpeg_missing" in str(e):
+            return JSONResponse(
+                status_code=503,
+                content={"error": "ffmpeg_missing", "detail": "FFmpeg not found on server"}
+            )
+        raise
+    except subprocess.CalledProcessError as e:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "decode_failed", "detail": str(e)[:200]}
+        )
+    except ValueError as e:
+        if "exceeds" in str(e):
+            return JSONResponse(
+                status_code=400,
+                content={"error": "size_limit_exceeded", "detail": str(e)}
+            )
+        raise
+    except Exception as e:
+        print(f"Batch transcribe error for session {session}: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "internal_error", "detail": f"Processing error: {str(e)[:200]}"}
+        )
